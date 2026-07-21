@@ -1,5 +1,27 @@
 # Findings — autoresearch sessions (image geolocalization, median_km ↓)
 
+## Session 3 — 2026-07-21c (starts from champion 229.9 @ 32075c7, 4-hour session)
+
+Plan (ranked from RESEARCH_LOG): 1. geo-contrastive hard negatives (semivariogram-weighted,
+no special samplers), 2. top-K cell reranking via learned per-cell prototypes (Lindenberger),
+3. EMA of trainables, 4. country-code aux head (HierLoc-lite), 5. GeM pooling, 6. deeper
+hierarchy follow-up, 7. LoRA on fc1/fc2. Literature sweeps between experiments.
+
+| # | idea | median_km | verdict |
+|---|------|-----------|---------|
+| 18 | baseline re-run (32075c7 champion) | 232.4 | champion seed (=229.9 within noise); cell_top1 15.4%, top5 44.1% |
+| 19 | geo-contrastive hard negatives (proj128, margin .3, far>1500km, λ=.1) | 238.7 | discard (+6.3; cell_top1 15.7 ticked UP but median down; −5% steps. Margin/λ may be off — one retune allowed later) |
+| 20 | per-cell prototype cosine head (256d, temp .07, w .5) + log-space ensemble at pred | 239.7 | discard (+7.2; cell_top1 16.4% BEST + acc25 up, median down — fused sharper posterior hurts the spherical-mean geometry) |
+| 21 | EMA of trainables (0.999, warmup-corrected), evals on EMA copy | 236.1 | discard (+3.7 noise; ~1000 steps too few for EMA — PARK for long runs) |
+| 22 | surgical rerank: fused (cls+proto) picks/orders top-k cells, spherical-mean weights stay on original posterior | ? | running |
+
+**Emerging pattern (exps 19+20):** ideas that improve cell_top1/top5 keep WORSENING median —
+the bottleneck may now be the prediction geometry (how probs → coordinates), not classification.
+If 21 doesn't move things, revisit prediction rule interaction instead of more classifier aux.
+
+Box: Thailand 5090 @ $0.40/hr (handpicked — 3 cheapest CA offers all in the broken-network DC;
+vast.py now sends SSH keepalives). Infra cost of bring-up: ~50 min + $0.30 across 2 dead boxes.
+
 ## Session 2 — 2026-07-21b (starts from champion 283.4 @ ae5e29f + val-cell instrumentation 337e4a7)
 
 Box: Thailand 5090 @ $0.38/hr, 20.4 MB/s HF (screened). Plan: 9. panorama InfoNCE aux (top pick),

@@ -19,3 +19,7 @@ a2f907c	239.271219	13.7	discard	geo-safe aug (RRC+jitter): 239.3 (+1.3, noise-ne
 a2f907c	247.339725	13.7	discard	TTA 3 center crops @final: 247.3 (+9.3 worse) — crop-averaging blurs the mode; single-view stays
 a2f907c	230.929419	13.7	discard	EVAL_EVERY 250: 230.9 (-7.1, below 8km bar) — full 480s training, 1056 steps; confirm run next
 32075c7	229.878710	13.7	keep	EVAL_EVERY 250 CONFIRM: 229.9 (2nd run, KEEP) — harness-efficiency win, not modeling
+32075c7	232.447783	13.7	keep	S3 baseline re-run (champion 32075c7) — 232.4, ref for this box
+32075c7	238.697009	13.7	discard	S3 exp19 geo-contrastive hard negatives (proj128, margin .3, far>1500km, w=.1) — +6.3 worse; cell_top1 15.7 (up) but median down, -5% steps
+32075c7	239.673537	13.7	discard	S3 exp20 prototype cosine head + log-space ensemble (256d, temp .07, beta 1) — +7.2 worse; cell_top1 16.4% BEST, acc25 3.4% up, median down — sharper fused posterior hurts spherical mean
+32075c7	236.078433	13.7	discard	S3 exp21 EMA of trainables (0.999 warmup-corrected, eval EMA copy) — +3.7 (noise); too few steps for EMA to shine, park for long runs
