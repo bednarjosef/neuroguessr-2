@@ -63,7 +63,8 @@ WARMUP_RATIO = 0.05
 FINAL_LR_FRAC = 0.05
 NUM_WORKERS = 32
 
-EVAL_EVERY = 100               # steps between monitoring evals on the quick val subset
+EVAL_EVERY = 250               # steps between monitoring evals (the SIGALRM cap is WALL time;
+                               # fewer quick evals -> more of the alarm window spent training)
 WANDB_PROJECT = os.environ.get("WANDB_PROJECT", "neuroguessr-2-research")
 
 # ---------------------------------------------------------------------------
