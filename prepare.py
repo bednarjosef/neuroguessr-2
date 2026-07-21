@@ -181,9 +181,19 @@ def _stream_shard_worker(args):
     split (deterministic), shuffles within its stream (seed-pinned), and saves its quota.
     The union over workers IS the frozen train subset — fixed given (nshards, seed, quota)."""
     widx, nshards, quota, img_dir = args
-    # Dead-peer robustness (does NOT change the subset): sockets time out instead of
-    # blocking forever, and a died stream is re-created from scratch — the stream is
-    # deterministic given (shard, seed), so a retry yields the identical rows.
+    # Each worker persists its finished rows as a part-parquet: reruns skip completed
+    # workers entirely (no re-download), and the part is the durable record of the rows.
+    # Deterministic (shard, seed) stream -> identical rows on any retry. Subset unchanged.
+    import pandas as pd
+    part_path = os.path.join(CACHE_DIR, f"train_part_w{widx:02d}.parquet")
+    if os.path.exists(part_path):
+        try:
+            part = pd.read_parquet(part_path)
+            if len(part) >= quota:
+                print(f"  train[w{widx:02d}]: part cached ({len(part)} rows), skipping", flush=True)
+                return part.to_dict("records")
+        except Exception:
+            pass
     import socket
     socket.setdefaulttimeout(90)
     from datasets import load_dataset
@@ -218,6 +228,8 @@ def _stream_shard_worker(args):
                     rate = len(rows) / (time.time() - t0 + 1e-9)
                     print(f"  train[w0]: {len(rows)}/{quota} ({rate:.1f} img/s/worker, ~{rate*nshards:.0f} img/s total)",
                           flush=True)
+            pd.DataFrame(rows).to_parquet(part_path, index=False)
+            print(f"  train[w{widx:02d}]: done ({len(rows)} rows -> part)", flush=True)
             return rows
         except Exception as e:
             print(f"  train[w{widx:02d}]: stream died ({type(e).__name__}: {e}); retry {attempt+1}/5",
