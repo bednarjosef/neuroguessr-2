@@ -1,10 +1,12 @@
 # Research log — neuroguessr-2 (image geolocalization)
 
-**Durable, cross-session memory.** Unlike `findings.md`/`results.tsv` (local, gitignored,
-per-session scratch), this file is **committed and pushed** so every future session — even a
-fresh clone — starts with the accumulated knowledge and doesn't repeat dead ends. The `/goal`
-command reads this FIRST at session start and updates + pushes it during and at the end of a
-session.
+**Durable, cross-session memory.** This is the **distilled** knowledge base — the champion,
+what's banked, what's a dead end, and what to try next — kept readable at a glance. The raw
+`results.tsv` (every run's score) and `findings.md` (the live notebook) are **also committed
+and pushed** now, as the full history behind this summary. The `/goal` command reads this file
+FIRST at session start and updates + pushes it (with the raw ledger + notebook) during and at
+the end of a session, so every future session — even a fresh clone — starts with the
+accumulated knowledge and doesn't repeat dead ends.
 
 Objective: **`median_km`** (median great-circle error on the val split), **lower is better**.
 

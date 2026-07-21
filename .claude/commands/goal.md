@@ -17,8 +17,13 @@ Follow this exactly:
    background, or build a wait-loop**; and **during the loop only `train.py` may change** —
    never edit `prepare.py`, `evaluate_geo`, the `predict_latlon` contract, or `ENGINE.md`.
    From `RESEARCH_LOG.md`, load the **current champion**, the **banked wins** (keep them),
-   the **dead ends** (do NOT retry them), and the **open ideas** (start from these). If a
-   local `findings.md`/`results.tsv` exist too, fold them in.
+   the **dead ends** (do NOT retry them), and the **open ideas** (start from these). Also read
+   `findings.md`/`results.tsv` if present and fold them in.
+
+   > **Deliberate override of ENGINE.md:** ENGINE says keep `results.tsv`/`findings.md`
+   > untracked. The human has chosen to **version and push them** (they are no longer
+   > gitignored) so the full run ledger + notebook are durable across sessions. Commit and push
+   > them alongside `RESEARCH_LOG.md` in the persistence step. Everything else in ENGINE stands.
 
 2. **Bring up the box** (one command — rent + watchdog + setup):
    ```
@@ -48,9 +53,10 @@ Follow this exactly:
    - **On every KEEP** and at least every ~30 min, update **`RESEARCH_LOG.md`**: refresh
      *Current champion* (score + one-line + the champion commit hash), append to *Banked wins*,
      and record any failure in *Dead ends & mistakes* (what was tried + the takeaway) and any
-     new *Open ideas*. Then commit and push it: `git add RESEARCH_LOG.md && git commit -m
-     "log: <what changed>" && git push origin HEAD` — and push the champion branch too
-     (`git push origin <autoresearch-branch>`), so nothing is lost if the box/session dies.
+     new *Open ideas*. Then commit and push the log **plus the raw ledger + notebook**:
+     `git add RESEARCH_LOG.md findings.md results.tsv && git commit -m "log: <what changed>" &&
+     git push origin HEAD` — and push the champion branch too (`git push origin
+     <autoresearch-branch>`), so nothing is lost if the box/session dies.
    - **At session end / wind-down:** write a dated block in *Session history*, do a final
      `RESEARCH_LOG.md` update + push, then **carry the champion forward**: fast-forward `master`
      to the champion branch and push it (`git checkout master && git merge --ff-only
