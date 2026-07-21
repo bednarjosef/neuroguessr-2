@@ -34,7 +34,7 @@ IMAGENET_STD = (0.229, 0.224, 0.225)
 LORA_R = 16
 LORA_ALPHA = 32
 LORA_DROPOUT = 0.05
-LORA_TARGETS = ["query", "key", "value", "dense"]
+LORA_TARGETS = ["q_proj", "k_proj", "v_proj", "o_proj"]  # transformers 5.x DINOv3 naming
 GRAD_CHECKPOINT = True
 
 # Head / geocells
