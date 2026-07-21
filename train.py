@@ -38,6 +38,10 @@ LORA_TARGETS = ["q_proj", "k_proj", "v_proj", "o_proj"]  # transformers 5.x DINO
 GRAD_CHECKPOINT = False   # bs24: activations fit without the ~30% recompute tax
 
 # Head / geocells
+# Hierarchical multi-resolution heads: coarse levels regularize the fine head and their
+# logits are added (log-space) onto the fine cells at prediction, fixing wrong-region errors.
+HIER_CELLS = [64, 512]         # coarse levels (fine level is N_CELLS)
+HIER_LOSS_W = [0.25, 0.5]      # per-coarse-level CE weight (fine CE has weight 1.0)
 N_CELLS = 2048
 KMEANS_ITERS = 25
 SMOOTH_TAU_KM = 75.0
@@ -166,7 +170,7 @@ def normalize_batch(imgs_uint8):
 # ---------------------------------------------------------------------------
 
 class GeoModel(nn.Module):
-    def __init__(self, centroids, cell_lat, cell_lon):
+    def __init__(self, centroids, cell_lat, cell_lon, hier=()):
         super().__init__()
         from transformers import AutoModel
         from peft import LoraConfig, get_peft_model
@@ -186,17 +190,23 @@ class GeoModel(nn.Module):
         hidden = backbone.config.hidden_size
         feat_dim = hidden * (2 if POOL == "cls_mean" else 1)
 
-        self.head = nn.Sequential(
+        self.trunk = nn.Sequential(
             nn.LayerNorm(feat_dim),
             nn.Linear(feat_dim, HEAD_HIDDEN),
             nn.GELU(),
             nn.Dropout(HEAD_DROPOUT),
-            nn.Linear(HEAD_HIDDEN, N_CELLS),
         )
+        self.fine_head = nn.Linear(HEAD_HIDDEN, N_CELLS)
+        self.coarse_heads = nn.ModuleList([nn.Linear(HEAD_HIDDEN, c) for c in HIER_CELLS])
         # Geocell geometry (buffers — fixed per run, not learned)
         self.register_buffer("centroids", centroids)      # (C, 3) unit vectors
         self.register_buffer("cell_lat", cell_lat)         # (C,)
         self.register_buffer("cell_lon", cell_lon)         # (C,)
+        # Coarse-level geometry + fine->coarse parent maps (nearest coarse centroid)
+        for l, (cc, clat, clon) in enumerate(hier):
+            self.register_buffer(f"coarse_lat_{l}", clat)
+            self.register_buffer(f"coarse_lon_{l}", clon)
+            self.register_buffer(f"parent_{l}", (centroids @ cc.T).argmax(dim=1))
 
     def features(self, pixel_values):
         out = self.backbone(pixel_values=pixel_values, **self._fwd_extra)
@@ -209,8 +219,19 @@ class GeoModel(nn.Module):
             f = torch.cat([h[:, 0], h[:, NUM_PREFIX_TOKENS:].mean(dim=1)], dim=-1)
         return f
 
+    def head_logits(self, feats):
+        """(combined fine logits, [coarse logits per level]). Combined = fine + each
+        coarse level's logit broadcast onto its child fine cells (log-space product)."""
+        h = self.trunk(feats)
+        fine = self.fine_head(h)
+        coarse = [ch(h) for ch in self.coarse_heads]
+        comb = fine
+        for l, cl in enumerate(coarse):
+            comb = comb + cl[:, getattr(self, f"parent_{l}")]
+        return comb, coarse
+
     def logits(self, pixel_values):
-        return self.head(self.features(pixel_values).float())
+        return self.head_logits(self.features(pixel_values).float())[0]
 
     @torch.no_grad()
     def predict_latlon(self, pixel_values, topk=PRED_TOPK, collect=None):
@@ -247,12 +268,16 @@ _, train_df = load_index("train")
 print(f"Train pool: {len(train_df)} images | Backbone: {MODEL_NAME} @ {IMG_SIZE}px")
 centroids, cell_lat, cell_lon = build_geocells(train_df, N_CELLS, KMEANS_ITERS)
 print(f"Geocells: {N_CELLS} (k-means, {KMEANS_ITERS} iters)")
+hier = [build_geocells(train_df, c, KMEANS_ITERS) for c in HIER_CELLS]
+print(f"Hierarchy: {HIER_CELLS} + {N_CELLS} (log-space combined)")
 
-model = GeoModel(centroids, cell_lat, cell_lon).to(device)
-model.head.to(torch.float32)
+model = GeoModel(centroids, cell_lat, cell_lon, hier).to(device)
+model.trunk.to(torch.float32); model.fine_head.to(torch.float32)
+model.coarse_heads.to(torch.float32)
 
 lora_params = [p for n, p in model.backbone.named_parameters() if p.requires_grad]
-head_params = list(model.head.parameters())
+head_params = (list(model.trunk.parameters()) + list(model.fine_head.parameters())
+               + list(model.coarse_heads.parameters()))
 n_train_params = sum(p.numel() for p in lora_params + head_params)
 print(f"Trainable params: {n_train_params/1e6:.2f}M (LoRA {sum(p.numel() for p in lora_params)/1e6:.2f}M "
       f"+ head {sum(p.numel() for p in head_params)/1e6:.2f}M)")
@@ -380,10 +405,16 @@ try:
             x = normalize_batch(imgs)
             blat = blat.to(device); blon = blon.to(device)
             with autocast_ctx:
-                logits = model.logits(x)
+                feats = model.features(x)
+            logits, coarse_logits = model.head_logits(feats.float())
             tgt = soft_targets(blat, blon, cell_lat, cell_lon, SMOOTH_TAU_KM)
             logp = F.log_softmax(logits, dim=-1)
-            loss = -(tgt * logp).sum(dim=-1).mean() / GRAD_ACCUM
+            loss = -(tgt * logp).sum(dim=-1).mean()
+            for l, cl in enumerate(coarse_logits):
+                tgt_l = soft_targets(blat, blon, getattr(model, f"coarse_lat_{l}"),
+                                     getattr(model, f"coarse_lon_{l}"), SMOOTH_TAU_KM)
+                loss = loss + HIER_LOSS_W[l] * -(tgt_l * F.log_softmax(cl, dim=-1)).sum(dim=-1).mean()
+            loss = loss / GRAD_ACCUM
             loss.backward()
             loss_val += loss.item()
 
