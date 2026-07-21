@@ -25,7 +25,7 @@ from prepare import (TIME_BUDGET, QUICK_VAL_N, EARTH_RADIUS_KM, load_index, open
 # ---------------------------------------------------------------------------
 
 MODEL_NAME = "facebook/dinov3-vitl16-pretrain-lvd1689m"
-IMG_SIZE = 448                 # must be a multiple of the patch size (16 dinov3 / 14 dinov2)
+IMG_SIZE = 384                 # must be a multiple of the patch size (16 dinov3 / 14 dinov2)
 NUM_PREFIX_TOKENS = 5          # CLS + register tokens before patches (dinov3=5, dinov2=1)
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
