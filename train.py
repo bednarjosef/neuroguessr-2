@@ -35,7 +35,7 @@ LORA_R = 16
 LORA_ALPHA = 32
 LORA_DROPOUT = 0.05
 LORA_TARGETS = ["q_proj", "k_proj", "v_proj", "o_proj"]  # transformers 5.x DINOv3 naming
-GRAD_CHECKPOINT = True
+GRAD_CHECKPOINT = False   # bs24: activations fit without the ~30% recompute tax
 
 # Head / geocells
 N_CELLS = 512
@@ -47,15 +47,15 @@ HEAD_DROPOUT = 0.1
 POOL = "cls"                   # "cls" | "mean" | "cls_mean"
 
 # Optimization
-DEVICE_BATCH_SIZE = 48
-GRAD_ACCUM = 1
+DEVICE_BATCH_SIZE = 24
+GRAD_ACCUM = 2
 LORA_LR = 1e-4
 HEAD_LR = 1e-3
 WEIGHT_DECAY = 0.05
 ADAM_BETAS = (0.9, 0.95)
 WARMUP_RATIO = 0.05
 FINAL_LR_FRAC = 0.05
-NUM_WORKERS = 8
+NUM_WORKERS = 32
 
 EVAL_EVERY = 100               # steps between monitoring evals on the quick val subset
 WANDB_PROJECT = os.environ.get("WANDB_PROJECT", "neuroguessr-2-research")
