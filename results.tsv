@@ -2,3 +2,6 @@ commit	score	memory_gb	status	description
 7d22c37	535.433484	6.8	keep	baseline: DINOv3-L LoRA r16 @448, 512 cells, tau75, bs48 (46 img/s)
 7d22c37	0.0	31.4	crash	no-ckpt + 32 workers @ bs48: OOM (activations >32GB)
 9890292	433.295567	17.8	keep	no grad-ckpt + bs24x2 + 32 workers (+47% steps)
+0f6483f	398.492614	17.8	keep	geocells 2048 + PRED_TOPK 16 (acc@200 29.9%)
+0f6483f	395.541182	17.8	discard	cls_mean pooling: 398.5->395.5, within noise; neutral, not confirmed
+0f6483f	395.701366	17.9	discard	offset-regression head: 395.7, within noise; within-cell res not the bottleneck

@@ -372,8 +372,17 @@ try:
               end="", flush=True)
 
         if wandb_run is not None and step % 20 == 0:
+            with torch.no_grad():
+                true_cell = tgt.argmax(dim=-1)
+                top5 = logits.float().topk(5, dim=-1).indices
+                cell_top1 = (top5[:, 0] == true_cell).float().mean().item()
+                cell_top5 = (top5 == true_cell.unsqueeze(1)).any(dim=1).float().mean().item()
             wandb.log({"train/loss": deb, "train/lr_mult": lrm, "train/img_per_s": ips,
-                       "train/progress": progress, "epoch": epoch}, step=step)
+                       "train/progress": progress, "epoch": epoch,
+                       "train/cell_top1": cell_top1, "train/cell_top5": cell_top5,
+                       # chance-normalized lift (1.0 = random), comparable across N_CELLS
+                       "train/cell_top1_lift": cell_top1 * N_CELLS,
+                       "train/cell_top5_lift": cell_top5 * N_CELLS / 5}, step=step)
 
         if EVAL_EVERY and step > 0 and step % EVAL_EVERY == 0:
             quick_eval(f"step {step}", step)
