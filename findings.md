@@ -12,13 +12,21 @@ hierarchical heads, tau up 110, IMG_SIZE 384, augmentation, TTA, EMA, GeM.
 | 11 | hierarchical heads 64/512/2048, log-space combine, CE w=0.25/0.5/1.0 | 263.9 | **KEEP** (−18.9; mean 1399→1219, acc@2500 87.7→89.9% — fixes wrong-region mass) |
 | 12 | tau 75→110 (on hier champion) | 271.0 | discard (+7.1; tau sweep DONE — 75 frozen) |
 | 13 | IMG_SIZE 448→384 (+35% steps at same budget) | 238.0 | **KEEP** (−25.9! 961 steps, cell_top1 15.2%, vram 13.7GB) |
-| 14 | bs48×1 @384 (same eff. batch, single fused fwd) | | running |
+| 14 | bs48×1 @384 (same eff. batch, single fused fwd) | 246.9 | discard (+8.9; fused pass SLOWER, 92 vs 106 img/s — bs24×2 frozen) |
+| 15 | geo-safe augmentation (RRC 0.5–1.0 + jitter 0.15, no flips) | 239.3 | discard (+1.3 noise-neutral at 0.5 epochs — parked for long runs) |
+| 16 | TTA at final eval (3 center crops, avg sharpened probs) | 247.3 | discard (+9.3; crop-averaging blurs the mode — same run's single-view quick-val was 223 @ step 900. exp parser showed CRASH but score was in run.log/W&B — SSH tail drop) |
+| 17 | EVAL_EVERY 100→250 (reclaim ~70s of wall-alarm window for training) | 230.9 | marginal (−7.1), confirm below |
+| 17b | confirm re-run of 17 | 229.9 | **KEEP** (held twice → champion 229.9 @ 32075c7) |
+
+**Found:** SIGALRM cap is WALL clock (480+45s); 9 quick evals/run eat ~90s of it → training
+cut at ~435s not 480. TTA therefore final-eval-only (alarm disarmed there). Next: EVAL_EVERY
+100→250 to reclaim ~70s training (+15% steps).
 
 
 ## Champion
 
-- **263.9 km** @ 7acb12a: prev champion + hierarchical heads 64/512/2048 (log-space combine,
-  coarse CE w 0.25/0.5). Panel: mean 1219 | acc@200 41.5% | acc@2500 89.9% | geoguessr 3596.
+- **229.9 km** @ 32075c7: hier heads + IMG 384 + EVAL_EVERY 250 (confirmed 230.9/229.9).
+  Panel: mean 1111 | acc@200 45.6% | acc@2500 91.0% | geoguessr 3693 | top1 ~15–16% top5 ~44%.
 
 ## Notes
 

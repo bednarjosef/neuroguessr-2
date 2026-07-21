@@ -14,11 +14,13 @@ Objective: **`median_km`** (median great-circle error on the val split), **lower
 
 ## Current champion
 
-- **median_km:** 263.9
-- **train.py commit:** 7acb12a (branch autoresearch/2026-07-21b)
+- **median_km:** 229.9 (confirmed twice: 230.9 / 229.9)
+- **train.py commit:** 32075c7 (branch autoresearch/2026-07-21b)
 - **one-line:** no-grad-ckpt (bs24x2, 32w) + 2048 geocells/topk16 + mode-seeking prediction
-  (T=0.5, 1000km locality) + hierarchical heads 64/512/2048 (log-space combine, w 0.25/0.5/1.0)
-- **full metric panel (last full-val eval):** mean_km 1219 · acc@200km 41.5% · acc@2500km 89.9% · geoguessr 3596 · val cell_top1 13.3% (lift 273x)
+  (T=0.5, 1000km locality) + hier heads 64/512/2048 (log-space, w 0.25/0.5/1.0) + IMG 384
+  + EVAL_EVERY 250 (full 480s training inside the wall alarm)
+- **full metric panel:** mean_km 1111 · acc@200km 45.6% · acc@2500km 91.0% · geoguessr 3693 ·
+  val cell_top1 14.8–16.0% (lift ~300–330x) · top5 43–44%
 
 ## Banked wins (confirmed to help — keep these, don't re-litigate)
 
@@ -33,6 +35,12 @@ _(each entry: the change, the median_km delta, and why it likely helped)_
 - **Hierarchical multi-resolution heads** (282.8→263.9, −6.7%, session 2): shared trunk + linear
   heads at 64/512/2048 cells; coarse logits added onto child fine cells (log-space) at prediction;
   coarse CE aux w=0.25/0.5. Fixes wrong-region errors (mean 1399→1219, acc@2500 87.7→89.9%).
+- **IMG_SIZE 448→384** (263.9→238.0, −9.8%, session 2): −27% tokens ≈ +50% steps in-budget;
+  resolution loss « step gain at 8-min budgets. cell_top1 13.3→15.2%. (Long runs may prefer 448.)
+- **EVAL_EVERY 100→250** (238.0→230.9/229.9 CONFIRMED, session 2): quick evals were eating ~90s
+  of the WALL-clock SIGALRM window (480+45s) — fewer evals = full 480s of real training, 1056
+  steps. Harness-efficiency win, NOT a modeling insight (label it as such). TTA/eval-time ideas
+  must go in the final eval only (alarm disarmed there).
 
 ## Dead ends & mistakes (tried, did NOT help or broke — do NOT repeat)
 
@@ -53,6 +61,12 @@ _(each entry: what was tried, what happened, and the takeaway so it isn't retrie
   cell_top1 fell 14.0→11.9%. The same-pano pair sampler halves distinct locations per batch —
   at 8-min budgets diversity beats the contrastive signal. Retry only with much longer budgets
   or a sampler that keeps ≥75% unique locations.
+- **tau 75→110 on hier champion**: 271.0 (+7.1). With 40 much worse and 110 somewhat worse,
+  tau=75 is the optimum — sweep DONE, frozen.
+- **TTA (3 center crops, avg sharpened probs, final eval)**: 247.3 vs 238.0, +9.3 WORSE. Tight
+  crops drop peripheral cues and averaging blurs the mode our mode-seeking rule needs. Skip TTA.
+- **Geo-safe augmentation (RRC 0.5–1.0 + jitter 0.15)**: 239.3, neutral at 0.5 epochs — nothing
+  to regularize yet. Parked for long runs (below).
 
 ## Parked for LONG-budget runs (better per-step, worse per-second — revisit when --minutes grows)
 
@@ -60,6 +74,11 @@ _(each entry: what was tried, what happened, and the takeaway so it isn't retrie
   bs24×2 at similar steps — clearly better per-step learning (bigger real batch), but the fused
   pass ran at 92 vs 106 img/s so it lost under the 8-min clock (246.9 vs 238.0 full-val).
   First thing to re-try in any long/final training run.
+- **Geo-safe augmentation** (exp 15): neutral at 0.5 epochs; will matter once long runs do
+  multiple epochs. Code is in git history (exp 15, commit range around a2f907c).
+- **IMG_SIZE 448** may re-win at long budgets where steps aren't the binding constraint.
+- **ViT-H+ backbone (0.84B)**: untried; ~2.5x FLOPs of ViT-L → wrong trade at 8 min, right
+  candidate for long runs (fits 32GB with LoRA+bf16 at 384px, moderate batch).
 - **Practice (Josef, 2026-07-21): when discarding an idea that lost on throughput, ALWAYS check
   W&B val/median_km at matched step counts; if it's better per-step, park it here instead of
   calling it a dead end. The session constraint is TIME, but long runs are constrained differently.**
@@ -68,26 +87,36 @@ _(each entry: what was tried, what happened, and the takeaway so it isn't retrie
 
 _(carry unfinished/promising directions forward across sessions)_
 
-Refreshed at end of session 2026-07-21 (champion 283.4). Cell SELECTION is the bottleneck —
-prioritize ideas that improve which cell wins, not within-cell refinement:
+Refreshed at end of session 2 (2026-07-21, champion ~231–238). Session 2 burned through most
+of the cheap menu — remaining ranked ideas:
 
-1. **Panorama-aware InfoNCE auxiliary** (OSV-5M's best aux; needs a same-panorama batch
-   sampler — 4 views share a panoid/location in the train metadata). Untried, top pick.
-2. **Hierarchical multi-resolution heads** (64/512/2048, combine in log-space) — targets
-   wrong-continent/region errors that locality can't fix. Untried.
-3. **Prediction-rule micro-sweep is DONE** (grid diag): T0.35/r1000 ≈ −5km on quick-val but
-   didn't confirm on full val; r=400 neutral; no-locality catastrophic (+54). Don't re-sweep.
-4. **tau UP (75→110/150)** at 2048 cells — 40 was much worse, so the gradient points up.
-   One cheap shot.
-5. **Bigger effective capacity via throughput**: IMG_SIZE 448→384 (−27% tokens ≈ +35% steps,
-   epoch coverage 0.53→~0.7) — accuracy/steps tradeoff unknown, worth one run.
-6. **Geolocation-safe augmentation** (RandomResizedCrop 0.5–1.0, color jitter; NO flips) —
-   only 0.5 epochs seen so overfitting is mild, but cheap to test.
-7. TTA without flips (3 crops, average probs after temp-sharpening).
-8. EMA of trainables.
-9. GeM pooling over patch tokens (cls_mean was neutral; GeM is the stronger variant).
-10. Retrieval refinement & offset regression: PARKED until cell_top1 improves substantially
-    (both tested within-noise at current accuracy).
+1. **Geo-contrastive hard negatives (Josef's idea, 2026-07-21):** within ordinary shuffled
+   batches, mine pairs that are visually similar (embedding cosine) but geographically FAR;
+   push those apart in a projection space (or penalize overlapping top cells), weight
+   ~ sim × distance, λ small (~0.1). Positives are already handled by tau-smoothing; do NOT
+   use special batch samplers (exp 10 lesson — diversity is sacred). Targets the ~10%
+   wrong-continent look-alike errors directly.
+2. **EMA of trainables** (eval the EMA copy) — classic free win, untried.
+3. **GeM pooling over patch tokens** (cls_mean was neutral; GeM is the stronger variant). Also
+   try cls+GeM concat.
+4. **Deeper hierarchy / rebalanced weights** (e.g. add 8-cell level, or w 0.15/0.35/1.0) — ONE
+   follow-up allowed on the banked hier win.
+5. **LoRA on MLP fc1/fc2 too** (currently attention-only) — more adaptation capacity, small
+   speed cost.
+6. **Country-code auxiliary head** (metadata has country_code; ~150-way CE aux) — different
+   supervision signal than cells.
+7. **Focal/entropy tweaks on fine CE** for the tail.
+7b. **(Process, from Josef): run the `research` skill / literature sweeps BETWEEN experiments
+   every session — don't only work down this list; hunt for new SOTA ideas each time.**
+8. **Top-K cell RERANKING (Josef's framing, 2026-07-21):** top1=16% but top5=44% — in ~28% of
+   val the right cell is in the top-5 but ranked wrong. Choosing among 5 candidates is much
+   easier than 2048-way CE. Options: (a) PIGEON-style retrieval rerank — cache train embeddings
+   per cell, rerank top-K by cosine to query (their biggest ablation win; eval-time only, no
+   training cost); (b) a small learned reranker head over top-K (cell embedding + image feature).
+   NOTE: this is DIFFERENT from the parked within-cell offset (that refines inside a chosen
+   cell; this fixes CHOOSING). Un-parked.
+9. **Retrieval for within-cell refinement & offset regression**: still PARKED until top1 ≫ 16%.
+9. Prediction-rule sweep is DONE (don't re-sweep); tau is DONE (75).
 
 Original scout list 2026-07-21 (PIGEON CVPR'24, OSV-5M CVPR'24, GeoCLIP NeurIPS'23), for reference:
 
@@ -136,6 +165,19 @@ _(anything about the box, dataset, VRAM ceilings, throughput, DINOv3 quirks, etc
 ## Session history
 
 _(one dated block per session: dates, champion at start → end, headline results)_
+
+### 2026-07-21 (session 2, evening)
+- Champion at start: 283.4 (baseline re-run 282.8) → at end: **229.9** (32075c7), −19% this session
+- Experiments run: 9 (baseline + 8; 3 KEEP incl. confirm, 5 discard, 1 parser-CRASH that was
+  really a finish — score recovered from run.log)
+- Headline: hier heads 64/512/2048 (−18.9), IMG 384 (−25.9), EVAL_EVERY 250 (−8, confirmed).
+  Dead ends: pano-InfoNCE pair batches (+23), tau 110 (+7), bs48×1 (+9, but parked — better
+  per-step), TTA crops (+9), aug (neutral, parked).
+- Infra now durable: cache tar on HF (2-min setups), part-parquet resume, socket timeouts.
+  Box: Thailand 5090 $0.38/hr, screened 20 MB/s HF. ~50 min lost to w08 stream stalls before
+  the resume fix landed.
+- Key diagnostics: top1 16% / top5 44% → RERANKING top-K is the big open direction (see open
+  ideas #8); Josef's geo-contrastive hard negatives is #1.
 
 ### 2026-07-21 (session 1)
 - Champion at start: none → at end: **283.4 km** (ae5e29f)

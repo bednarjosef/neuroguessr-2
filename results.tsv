@@ -14,3 +14,8 @@ ae5e29f	316.372293	17.8	discard	tau 75->40: 316.4, sharper labels HURT at 2048 c
 7acb12a	263.898983	17.9	keep	hier heads 64/512/2048 log-space: 263.9 (-18.9 KEEP); mean 1219, acc2500 89.9% — coarse levels fix wrong-region mass
 7acb12a	271.002693	17.9	discard	tau 75->110 on hier champion: 271.0 (+7.1 worse) — tau sweep DONE, 75 frozen
 a2f907c	238.025489	13.7	keep	IMG 384: 238.0 (-25.9 KEEP); 961 steps (+50%), cell_top1 15.2%, vram 13.7GB — throughput still king
+a2f907c	246.923165	25.5	discard	bs48x1 @384: 246.9 (+8.9 worse); fused pass SLOWER (92 vs 106 img/s) — bs24x2 frozen
+a2f907c	239.271219	13.7	discard	geo-safe aug (RRC+jitter): 239.3 (+1.3, noise-neutral at 0.5 epochs) — park for long runs
+a2f907c	247.339725	13.7	discard	TTA 3 center crops @final: 247.3 (+9.3 worse) — crop-averaging blurs the mode; single-view stays
+a2f907c	230.929419	13.7	discard	EVAL_EVERY 250: 230.9 (-7.1, below 8km bar) — full 480s training, 1056 steps; confirm run next
+32075c7	229.878710	13.7	keep	EVAL_EVERY 250 CONFIRM: 229.9 (2nd run, KEEP) — harness-efficiency win, not modeling
