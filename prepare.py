@@ -172,6 +172,74 @@ def _download_split(split_name, n, img_dir, meta_path, shuffle):
     print(f"  {split_name}: cached {len(df)} rows -> {meta_path}  ({time.time()-t0:.0f}s)")
 
 
+DOWNLOAD_WORKERS = int(os.environ.get("AR_DOWNLOAD_WORKERS", "16"))
+SHARD_SHUFFLE_BUFFER = 1000   # per-worker shuffle buffer (part of the frozen subset definition)
+
+
+def _stream_shard_worker(args):
+    """One parallel stream: worker widx takes every nshards-th parquet file of the train
+    split (deterministic), shuffles within its stream (seed-pinned), and saves its quota.
+    The union over workers IS the frozen train subset — fixed given (nshards, seed, quota)."""
+    widx, nshards, quota, img_dir = args
+    from datasets import load_dataset
+    ds = load_dataset(DATASET_NAME, split="train", streaming=True)
+    ds = ds.shard(num_shards=nshards, index=widx)
+    ds = ds.shuffle(seed=DATA_SEED + widx, buffer_size=SHARD_SHUFFLE_BUFFER)
+    rows = []
+    t0 = time.time()
+    for ex in ds:
+        if len(rows) >= quota:
+            break
+        try:
+            lat = float(ex["latitude"]); lon = float(ex["longitude"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        img = ex.get("image")
+        if img is None:
+            continue
+        fname = f"w{widx:02d}_{len(rows):06d}.jpg"
+        try:
+            _resize_for_storage(img).save(os.path.join(img_dir, fname), "JPEG", quality=90)
+        except Exception:
+            continue
+        rec = {"path": fname, "latitude": lat, "longitude": lon}
+        for c in META_COLS:
+            if c not in ("latitude", "longitude") and c in ex:
+                rec[c] = ex[c]
+        rows.append(rec)
+        if widx == 0 and len(rows) % 250 == 0:
+            rate = len(rows) / (time.time() - t0 + 1e-9)
+            print(f"  train[w0]: {len(rows)}/{quota} ({rate:.1f} img/s/worker, ~{rate*nshards:.0f} img/s total)",
+                  flush=True)
+    return rows
+
+
+def _download_train_parallel(n, img_dir, meta_path):
+    """Parallel sharded train download: DOWNLOAD_WORKERS concurrent streams, each over a
+    disjoint slice of the split's files. ~WORKERSx faster than one stream. Idempotent."""
+    import pandas as pd
+    from datasets import load_dataset
+    if os.path.exists(meta_path):
+        df = pd.read_parquet(meta_path)
+        if len(df) >= n:
+            print(f"  train: {len(df)} rows already cached at {meta_path}")
+            return
+    os.makedirs(img_dir, exist_ok=True)
+    ds = load_dataset(DATASET_NAME, split="train", streaming=True)
+    nshards = max(1, min(DOWNLOAD_WORKERS, getattr(ds, "num_shards", 1) or 1))
+    quota = -(-n // nshards)
+    print(f"  train: {nshards} parallel shard streams x {quota} rows (seed={DATA_SEED})")
+    t0 = time.time()
+    from multiprocessing import get_context
+    with get_context("spawn").Pool(nshards) as pool:
+        parts = pool.map(_stream_shard_worker,
+                         [(i, nshards, quota, img_dir) for i in range(nshards)])
+    rows = [r for part in parts for r in part][:n]
+    df = pd.DataFrame(rows)
+    df.to_parquet(meta_path, index=False)
+    print(f"  train: cached {len(df)} rows -> {meta_path}  ({time.time()-t0:.0f}s)")
+
+
 def download_data():
     os.makedirs(CACHE_DIR, exist_ok=True)
     print(f"Dataset: {DATASET_NAME}")
@@ -183,8 +251,8 @@ def download_data():
     print(f"Downloading val split '{val_split}' (up to {N_VAL})...")
     _download_split(val_split, N_VAL, VAL_IMG_DIR, VAL_META, shuffle=False)
 
-    print(f"Downloading train subset (seed={DATA_SEED}, {N_TRAIN} images)...")
-    _download_split("train", N_TRAIN, TRAIN_IMG_DIR, TRAIN_META, shuffle=True)
+    print(f"Downloading train subset ({N_TRAIN} images, parallel)...")
+    _download_train_parallel(N_TRAIN, TRAIN_IMG_DIR, TRAIN_META)
 
 # ---------------------------------------------------------------------------
 # Data access helpers (imported by train.py — train.py builds its own dataloader)
