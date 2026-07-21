@@ -135,7 +135,10 @@ def ensure_ssh_key() -> None:
 
 def _ssh_opts() -> list[str]:
     opts = ["-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null",
-            "-o", "LogLevel=ERROR"]
+            "-o", "LogLevel=ERROR",
+            # some DCs (e.g. California 209.146.116.50) kill idle-looking connections during
+            # quiet phases (pip install); keepalives every 15s prevent the drop
+            "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=8"]
     if SSH_KEY.exists():
         opts += ["-i", str(SSH_KEY)]
     return opts
