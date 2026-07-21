@@ -1,0 +1,2 @@
+commit	score	memory_gb	status	description
+7d22c37	535.433484	6.8	keep	baseline: DINOv3-L LoRA r16 @448, 512 cells, tau75, bs48 (46 img/s)
