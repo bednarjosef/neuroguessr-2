@@ -256,6 +256,9 @@ def download_data():
     print(f"Dataset: {DATASET_NAME}")
     print(f"Cache:   {CACHE_DIR}")
 
+    if _try_cache_tar():
+        return
+
     val_split = _find_split(["validation", "val", "test", "valid"])
     if val_split is None:
         sys.exit("Could not find a validation split (tried validation/val/test/valid).")
@@ -264,6 +267,42 @@ def download_data():
 
     print(f"Downloading train subset ({N_TRAIN} images, parallel)...")
     _download_train_parallel(N_TRAIN, TRAIN_IMG_DIR, TRAIN_META)
+
+CACHE_TAR_REPO = "josefbednar/streetview-acw-ar-cache"   # prebuilt-cache fast path
+CACHE_TAR_NAME = f"cache_n{N_TRAIN}_v{N_VAL}_s{DATA_SEED}.tar"
+
+
+def _cache_complete():
+    """True if the local cache already holds the full frozen subset."""
+    import pandas as pd
+    try:
+        return (len(pd.read_parquet(TRAIN_META)) >= N_TRAIN
+                and len(pd.read_parquet(VAL_META)) >= N_VAL)
+    except Exception:
+        return False
+
+
+def _try_cache_tar():
+    """Fast path: pull the prebuilt cache tar (identical bytes to a fresh streaming
+    download of the frozen subset) from HF. Falls back to streaming on any failure."""
+    if _cache_complete():
+        print("  cache already complete — skipping download")
+        return True
+    try:
+        from huggingface_hub import hf_hub_download
+        print(f"  trying prebuilt cache tar {CACHE_TAR_REPO}/{CACHE_TAR_NAME} ...")
+        t0 = time.time()
+        tar_path = hf_hub_download(repo_id=CACHE_TAR_REPO, repo_type="dataset",
+                                   filename=CACHE_TAR_NAME)
+        import tarfile
+        with tarfile.open(tar_path) as tf:
+            tf.extractall(os.path.dirname(CACHE_DIR))
+        ok = _cache_complete()
+        print(f"  cache tar {'restored' if ok else 'INCOMPLETE'} in {time.time()-t0:.0f}s")
+        return ok
+    except Exception as e:
+        print(f"  no prebuilt cache tar ({type(e).__name__}); falling back to streaming")
+        return False
 
 # ---------------------------------------------------------------------------
 # Data access helpers (imported by train.py — train.py builds its own dataloader)
