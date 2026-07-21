@@ -5,3 +5,4 @@ commit	score	memory_gb	status	description
 0f6483f	398.492614	17.8	keep	geocells 2048 + PRED_TOPK 16 (acc@200 29.9%)
 0f6483f	395.541182	17.8	discard	cls_mean pooling: 398.5->395.5, within noise; neutral, not confirmed
 0f6483f	395.701366	17.9	discard	offset-regression head: 395.7, within noise; within-cell res not the bottleneck
+ae5e29f	283.354824	17.8	keep	mode-seeking pred rule T0.5 r1000 (-29%, acc@200 39.8%)

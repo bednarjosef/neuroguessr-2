@@ -14,22 +14,33 @@ Objective: **`median_km`** (median great-circle error on the val split), **lower
 
 ## Current champion
 
-- **median_km:** 535.4
-- **train.py commit:** 7d22c37 (branch autoresearch/2026-07-21)
-- **one-line:** stock baseline: DINOv3-L LoRA r16 (q/k/v/o proj), 448px, 512 k-means cells, tau 75km, bs48
-- **full metric panel (last full-val eval):** mean_km 1473 · acc@25km 0.4% · acc@2500km 86.7% · geoguessr 3070
+- **median_km:** 283.4
+- **train.py commit:** ae5e29f (branch autoresearch/2026-07-21)
+- **one-line:** baseline + no-grad-ckpt (bs24x2, 32 workers) + 2048 geocells/topk16 + mode-seeking
+  prediction (T=0.5, 1000km locality around top-1)
+- **full metric panel (last full-val eval):** mean_km 1404 · acc@25km 2.6% · acc@200km 39.8% · acc@2500km 87.6% · geoguessr 3489
 
 ## Banked wins (confirmed to help — keep these, don't re-litigate)
 
 _(each entry: the change, the median_km delta, and why it likely helped)_
 
-- —
+- **No grad-checkpoint + bs24×2 accum + 32 workers** (535.4→433.3, −19%): checkpointing was a
+  ~30% compute tax; at 8-min budgets, throughput ≈ data seen ≈ accuracy. bs48 no-ckpt OOMs 32GB.
+- **2048 k-means geocells + PRED_TOPK 16** (433.3→398.5, −8%): median floored by cell size.
+- **Mode-seeking prediction rule** (398.5→283.4, −29%!): softmax at T=0.5 + only average top-k
+  cells within 1000 km of the top-1. Median rewards mode-seeking; the old global spherical mean
+  averaged cross-continent mass into oceans. mean_km worsens slightly — expected, fine.
 
 ## Dead ends & mistakes (tried, did NOT help or broke — do NOT repeat)
 
 _(each entry: what was tried, what happened, and the takeaway so it isn't retried blind)_
 
-- —
+- **No-ckpt at bs48**: OOM on 32GB (activations). Pair no-ckpt with device bs ≤24 @448px.
+- **cls_mean pooling**: 398.5→395.5, within run noise (±3–5 km). Neutral at best solo.
+- **Per-cell offset regression head** (OSV-5M hybrid): 395.7, within noise. Takeaway: at this
+  accuracy the error is dominated by WRONG-CELL selection, not within-cell resolution — skip
+  further within-cell refinement (incl. retrieval refinement) until cell_top1 is much higher.
+- Run-to-run noise on the full-val median is ~±3–5 km: don't crown wins smaller than ~8 km.
 
 ## Open ideas / next to try (ranked)
 
