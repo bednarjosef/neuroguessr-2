@@ -1,26 +1,10 @@
 """
-One-time data preparation + FROZEN evaluator for autoresearch (image geolocalization).
+FROZEN harness for the geolocalization study — NOT edited during research.
 
-Downloads a FIXED, seed-pinned subset of the streetview dataset once and caches it to
-local JPEGs + a metadata parquet, so every experiment trains/evaluates on exactly the
-same images (comparable scores, no re-downloading 1.2M rows). Also defines the frozen,
-un-gameable objective: the great-circle (haversine) error between the model's predicted
-lat/lon and the ground truth on the held-out val split.
-
-Usage:
-    python prepare.py                 # full prep (download subset + val)
-    python prepare.py --num-shards 8  # arg accepted for vast.py compatibility (ignored)
-
-Everything is cached under ~/.cache/autoresearch_geo/.
-
-CONTRACT (frozen during research — agents edit train.py only):
-    - The train subset (which images) and the val split are fixed here.
-    - `evaluate_geo(predict_fn, ...)` computes the objective. `predict_fn` takes a list of
-      PIL images and returns (lat_array, lon_array) in degrees. The model ONLY ever emits
-      coordinates; the scoring (haversine + metrics) lives here and cannot be gamed from
-      train.py.
-    - `median_km` (lower is better) is the primary objective. mean_km, acc@{1,25,200,750,
-      2500}km and the GeoGuessr game score are computed too, as diagnostics.
+Caches a fixed, seed-pinned image subset once (~/.cache/autoresearch_geo/) and defines the
+objective. `evaluate_geo(predict_fn, ...)`: predict_fn takes PIL images and returns
+(lat, lon) in degrees; scoring (haversine + metrics) lives here so it can't be gamed.
+Primary objective `median_km` (lower better), plus mean_km / acc@thresholds / geoguessr.
 """
 
 import os
@@ -227,16 +211,9 @@ def open_image(img_dir, path):
 # ---------------------------------------------------------------------------
 
 def evaluate_geo(predict_fn, split="val", subset=None, batch_size=64):
-    """FROZEN evaluator. Feeds val images to the model's `predict_fn` and scores its
-    coordinate predictions against ground truth.
-
-    predict_fn(pil_images: list[PIL.Image]) -> (lat, lon) as array-likes of length B,
-    in degrees. The model may preprocess however it likes internally; it only ever
-    returns coordinates, so the objective can't be gamed from train.py.
-
-    `subset`: if an int, evaluate on the first `subset` rows (fixed, for fast in-training
-    monitoring). None = full split (the official score). Returns the geo_metrics dict.
-    """
+    """Score predict_fn's coordinates against ground truth. predict_fn(pil_images) ->
+    (lat, lon) in degrees. subset=int: first N rows (fast monitoring); None: full split
+    (official score). Returns the geo_metrics dict."""
     img_dir, df = load_index(split)
     if subset is not None:
         df = df.iloc[:subset]
@@ -256,21 +233,18 @@ def evaluate_geo(predict_fn, split="val", subset=None, batch_size=64):
     return geo_metrics(pred_lat, pred_lon, true_lat, true_lon)
 
 # ---------------------------------------------------------------------------
-# Hard training-time deadline (DO NOT CHANGE — keeps the per-experiment limit honest)
+# Hard training-time deadline (DO NOT CHANGE)
 # ---------------------------------------------------------------------------
-# train.py self-stops via its per-step time check, but that can drift (a slow step, an
-# uncounted warm-up, or a hang). This arms a real wall-clock alarm: when it fires, SIGALRM
-# raises TrainingTimeUp in the main thread, so training stops promptly and gracefully —
-# train.py catches it and still runs the final eval, so you always get a score.
+# SIGALRM backstop: raises TrainingTimeUp in the main thread at TIME_BUDGET + grace, so
+# train.py stops even on a hang/overrun and still reaches the final eval. Wrap the loop in
+# try/except TrainingTimeUp.
 
 class TrainingTimeUp(Exception):
-    """Raised in the main thread when the hard training-time deadline fires."""
+    pass
 
 
 def start_training_clock(grace_seconds=45):
-    """Arm a HARD wall-clock cap on the training phase. Call right before the training loop.
-    Fires at TIME_BUDGET + grace; the grace covers uncounted warm-up/compile so a healthy
-    run stops via its own per-step check first and the alarm only bites on overruns/hangs."""
+    """Arm the wall-clock cap; call right before the training loop."""
     def _on_deadline(signum, frame):
         raise TrainingTimeUp()
     signal.signal(signal.SIGALRM, _on_deadline)
@@ -278,8 +252,7 @@ def start_training_clock(grace_seconds=45):
 
 
 def stop_training_clock():
-    """Disarm the deadline. Call after the loop, before eval, so the alarm can't interrupt
-    evaluation."""
+    """Disarm the cap; call after the loop, before eval."""
     signal.setitimer(signal.ITIMER_REAL, 0.0)
 
 # ---------------------------------------------------------------------------

@@ -1,18 +1,6 @@
 """
-Autoresearch experiment: image geolocalization by LoRA-finetuning a frozen DINOv2 (ViT-L)
-backbone with a geocell-classification head (PIGEON-style haversine-smoothed labels), then
-predicting lat/lon by a probability-weighted spherical mean over the cell centroids.
-
-This is THE artifact the ratchet edits. Everything here is fair game — backbone, LoRA
-config, head, geocells, loss, optimizer, augmentation, resolution. The frozen harness
-(prepare.py: the fixed data subset + the haversine scoring) is NOT editable during research.
-
-Contract: this prints exactly one `median_km: <number>` summary line (the objective, lower
-is better) plus a panel of diagnostics as extra `name: number` lines. During training it
-also prints an every-N-steps monitoring line (prefixed, so it isn't parsed as the score)
-evaluated on a fixed val subset. The final score uses the full val split.
-
-Usage: python train.py
+Image-geolocalization experiment. Must print one `median_km: <number>` summary line (the
+objective) plus any `name: number` diagnostics. Everything here is editable.
 """
 
 import os
@@ -33,18 +21,12 @@ from prepare import (TIME_BUDGET, QUICK_VAL_N, EARTH_RADIUS_KM, load_index, open
                      evaluate_geo, TrainingTimeUp, start_training_clock, stop_training_clock)
 
 # ---------------------------------------------------------------------------
-# Hyperparameters (edit these directly — this is what the ratchet mutates)
+# Hyperparameters
 # ---------------------------------------------------------------------------
 
-# Backbone (frozen, LoRA-adapted). DINOv3 ViT-L/16 on LVD-1689M (natural images) is the
-# right domain for ground-level street-view. Needs an accepted HF token on the box (forwarded
-# from the local .env by vast.py). Swaps: "...vith16plus-pretrain-lvd1689m" (0.8B, bigger but
-# slower), "facebook/dinov2-large" (ungated fallback, patch14).
 MODEL_NAME = "facebook/dinov3-vitl16-pretrain-lvd1689m"
-IMG_SIZE = 448                 # multiple of the patch size (16 for dinov3, 14 for dinov2)
-# Number of non-patch prefix tokens in last_hidden_state (CLS + registers). DINOv3 = 1 CLS +
-# 4 registers = 5; DINOv2 (no registers) = 1. Only matters for mean/patch pooling.
-NUM_PREFIX_TOKENS = 5
+IMG_SIZE = 448                 # must be a multiple of the patch size (16 dinov3 / 14 dinov2)
+NUM_PREFIX_TOKENS = 5          # CLS + register tokens before patches (dinov3=5, dinov2=1)
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
 
@@ -52,35 +34,30 @@ IMAGENET_STD = (0.229, 0.224, 0.225)
 LORA_R = 16
 LORA_ALPHA = 32
 LORA_DROPOUT = 0.05
-LORA_TARGETS = ["query", "key", "value", "dense"]  # DINOv2 attention proj + output
-GRAD_CHECKPOINT = True         # trade compute for VRAM (lets ViT-L fit a big batch)
+LORA_TARGETS = ["query", "key", "value", "dense"]
+GRAD_CHECKPOINT = True
 
 # Head / geocells
-N_CELLS = 512                  # number of geocells (k-means on train coords)
+N_CELLS = 512
 KMEANS_ITERS = 25
-SMOOTH_TAU_KM = 75.0           # PIGEON-style haversine label smoothing temperature (km)
-PRED_TOPK = 8                  # predict via prob-weighted spherical mean over top-k cells
-HEAD_HIDDEN = 1024             # MLP head hidden width
+SMOOTH_TAU_KM = 75.0
+PRED_TOPK = 8
+HEAD_HIDDEN = 1024
 HEAD_DROPOUT = 0.1
-POOL = "cls"                   # "cls" | "mean" | "cls_mean" backbone feature pooling
+POOL = "cls"                   # "cls" | "mean" | "cls_mean"
 
 # Optimization
 DEVICE_BATCH_SIZE = 48
 GRAD_ACCUM = 1
-LORA_LR = 1e-4                 # LR for LoRA adapter params
-HEAD_LR = 1e-3                 # LR for the geocell head
+LORA_LR = 1e-4
+HEAD_LR = 1e-3
 WEIGHT_DECAY = 0.05
 ADAM_BETAS = (0.9, 0.95)
-WARMUP_RATIO = 0.05            # fraction of budget for LR warmup
-FINAL_LR_FRAC = 0.05          # cosine floor as fraction of peak LR
+WARMUP_RATIO = 0.05
+FINAL_LR_FRAC = 0.05
 NUM_WORKERS = 8
 
-# Eval cadence
 EVAL_EVERY = 100               # steps between monitoring evals on the quick val subset
-
-# Experiment tracking (W&B). Records every experiment as a run in one project. Reads
-# WANDB_API_KEY / WANDB_PROJECT / WANDB_ENTITY from env (forwarded by vast.py from .env);
-# with no key it runs disabled so the experiment never blocks on tracking.
 WANDB_PROJECT = os.environ.get("WANDB_PROJECT", "neuroguessr-2-research")
 
 # ---------------------------------------------------------------------------
@@ -192,17 +169,14 @@ class GeoModel(nn.Module):
         from transformers import AutoModel
         from peft import LoraConfig, get_peft_model
 
-        # Backbone stays fp32; autocast handles bf16 compute (stable LoRA training).
         backbone = AutoModel.from_pretrained(MODEL_NAME)
-        # DINOv2 needs interpolate_pos_encoding=True for non-native resolutions; DINOv3 (RoPE)
-        # handles arbitrary resolution natively and doesn't take the kwarg. Detect it.
+        # Only pass interpolate_pos_encoding to backbones that accept it (dinov2 does, dinov3 doesn't).
         import inspect
         self._fwd_extra = ({"interpolate_pos_encoding": True}
                            if "interpolate_pos_encoding" in inspect.signature(backbone.forward).parameters
                            else {})
         if GRAD_CHECKPOINT:
-            # use_reentrant=False is REQUIRED: the backbone is frozen, so its inputs don't
-            # require grad; reentrant checkpointing would drop the LoRA gradients entirely.
+            # use_reentrant=False required: backbone is frozen, so reentrant checkpointing drops LoRA grads.
             backbone.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
         lora = LoraConfig(r=LORA_R, lora_alpha=LORA_ALPHA, lora_dropout=LORA_DROPOUT,
                           target_modules=LORA_TARGETS, bias="none")
