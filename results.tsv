@@ -9,3 +9,4 @@ ae5e29f	283.354824	17.8	keep	mode-seeking pred rule T0.5 r1000 (-29%, acc@200 39
 ae5e29f	278.324913	18.9	discard	unfreeze last2 blocks: 278.3 (-5.1, borderline); grid: T0.35 r1000 best, no-locality terrible
 ae5e29f	280.585982	18.9	discard	unfreeze+T0.35 combo: 280.6, still within noise vs 283.4; unfreeze ~1% real at best
 ae5e29f	316.372293	17.8	discard	tau 75->40: 316.4, sharper labels HURT at 2048 cells
+337e4a7	282.777192	17.8	keep	session2 baseline re-run @337e4a7: 282.8 (~= champ 283.4, noise); val cell_top1 14.0% lift 288x

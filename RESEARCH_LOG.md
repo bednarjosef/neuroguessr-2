@@ -102,8 +102,14 @@ _(anything about the box, dataset, VRAM ceilings, throughput, DINOv3 quirks, etc
 - **Parallel data pull** (banked in prepare.py 8a28c43): 16 sharded streams; the dataset's
   parquet row groups are ~1000 rows (~390 MB), so each stream is silent for minutes before its
   first image — not a hang. Full 60k pull ≈ 20 min at 33 MB/s.
-- **Speedup TODO:** tar `~/.cache/autoresearch_geo` (~4 GB) and push once to HF; future setups
-  become a single 2-min download.
+- **Cache tar DONE (session 2):** `josefbednar/streetview-acw-ar-cache/cache_n60000_v3000_s1337.tar`
+  (4.65 GB, private) uploaded; prepare.py pulls it automatically (66c390d) before falling back to
+  streaming. Setup is now a one-tar download. Also: per-worker part-parquets (8bdf4bc) make
+  streaming reruns resume instead of restart, and workers have socket timeouts + retries (f027237).
+- **HF streaming stalls root-caused (probably):** unauthenticated/parallel hammering triggers silent
+  rate-limit backoff; one worker (w08) hung twice with zero traffic on live sockets. If a worker
+  stalls: kill + rerun prepare (parts resume). ALWAYS pass HF_TOKEN to remote nohup commands —
+  the env does not follow you.
 - transformers 5.14 DINOv3: LoRA targets are `q_proj/k_proj/v_proj/o_proj`.
 - RTX 5090 32GB: baseline uses only 6.9 GB with checkpointing on; throughput 46 img/s → 0.36
   epochs per 8-min budget. Compute/throughput, not VRAM, is the binding constraint.

@@ -1,4 +1,15 @@
-# Findings — autoresearch/2026-07-21 (image geolocalization, median_km ↓)
+# Findings — autoresearch sessions (image geolocalization, median_km ↓)
+
+## Session 2 — 2026-07-21b (starts from champion 283.4 @ ae5e29f + val-cell instrumentation 337e4a7)
+
+Box: Thailand 5090 @ $0.38/hr, 20.4 MB/s HF (screened). Plan: 9. panorama InfoNCE aux (top pick),
+hierarchical heads, tau up 110, IMG_SIZE 384, augmentation, TTA, EMA, GeM.
+
+| # | idea | median_km | verdict |
+|---|------|-----------|---------|
+| 9 | baseline re-run (337e4a7, smoke-tests val-cell metrics) | 282.8 | champion seed (=283.4 within noise); cell_top1 14.0%, lift 288x |
+| 10 | panorama InfoNCE aux (pair sampler, λ=0.5, T=0.1, proj 256) | | running |
+
 
 ## Champion
 
