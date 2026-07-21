@@ -81,7 +81,7 @@ EVAL_EVERY = 100               # steps between monitoring evals on the quick val
 # Experiment tracking (W&B). Records every experiment as a run in one project. Reads
 # WANDB_API_KEY / WANDB_PROJECT / WANDB_ENTITY from env (forwarded by vast.py from .env);
 # with no key it runs disabled so the experiment never blocks on tracking.
-WANDB_PROJECT = os.environ.get("WANDB_PROJECT", "streetview-geoloc")
+WANDB_PROJECT = os.environ.get("WANDB_PROJECT", "neuroguessr-2-research")
 
 # ---------------------------------------------------------------------------
 # Setup

@@ -46,7 +46,7 @@ rented box, and keep it only if it beats the champion.
   `EVAL_EVERY` (=100) steps** `train.py` prints a monitoring line with all of these,
   evaluated on a **fixed 1000-image val subset** (fast); the final score uses the full val.
 - All of these (plus train loss) are logged to **W&B** — one run per experiment, grouped in
-  the `WANDB_PROJECT` project (default `streetview-geoloc`).
+  the `WANDB_PROJECT` project (default `neuroguessr-2-research`).
 - The metric is computed by `evaluate_geo` in `prepare.py` and is **ground truth** — never
   change it. The model only ever emits coordinates via `predict_latlon`; the scoring lives in
   the frozen harness, so it can't be gamed.
