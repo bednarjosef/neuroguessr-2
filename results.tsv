@@ -1,3 +1,4 @@
 commit	score	memory_gb	status	description
 7d22c37	535.433484	6.8	keep	baseline: DINOv3-L LoRA r16 @448, 512 cells, tau75, bs48 (46 img/s)
 7d22c37	0.0	31.4	crash	no-ckpt + 32 workers @ bs48: OOM (activations >32GB)
+9890292	433.295567	17.8	keep	no grad-ckpt + bs24x2 + 32 workers (+47% steps)

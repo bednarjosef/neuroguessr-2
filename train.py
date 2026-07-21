@@ -38,10 +38,10 @@ LORA_TARGETS = ["q_proj", "k_proj", "v_proj", "o_proj"]  # transformers 5.x DINO
 GRAD_CHECKPOINT = False   # bs24: activations fit without the ~30% recompute tax
 
 # Head / geocells
-N_CELLS = 512
+N_CELLS = 2048
 KMEANS_ITERS = 25
 SMOOTH_TAU_KM = 75.0
-PRED_TOPK = 8
+PRED_TOPK = 16
 HEAD_HIDDEN = 1024
 HEAD_DROPOUT = 0.1
 POOL = "cls"                   # "cls" | "mean" | "cls_mean"
