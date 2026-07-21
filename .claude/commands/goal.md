@@ -10,11 +10,15 @@ to **rent a GPU and spend money** for the configured session length.
 
 Follow this exactly:
 
-1. **Read the mission and the engine.** Read `program.md` (what to optimize + config) and
-   `ENGINE.md` (the fixed loop). Obey `ENGINE.md` to the letter. The two non-negotiables:
+1. **Read the mission, the engine, and the accumulated knowledge.** Read `program.md` (what to
+   optimize + config), `ENGINE.md` (the fixed loop), and **`RESEARCH_LOG.md` (durable
+   cross-session memory)**. Obey `ENGINE.md` to the letter. The two non-negotiables:
    **experiments are synchronous — run `python vast.py exp` in the FOREGROUND, never poll,
    background, or build a wait-loop**; and **during the loop only `train.py` may change** —
    never edit `prepare.py`, `evaluate_geo`, the `predict_latlon` contract, or `ENGINE.md`.
+   From `RESEARCH_LOG.md`, load the **current champion**, the **banked wins** (keep them),
+   the **dead ends** (do NOT retry them), and the **open ideas** (start from these). If a
+   local `findings.md`/`results.tsv` exist too, fold them in.
 
 2. **Bring up the box** (one command — rent + watchdog + setup):
    ```
@@ -32,15 +36,32 @@ Follow this exactly:
    also logged to the W&B project `neuroguessr-2-research`.
 
 4. **Run the ratchet loop.** Repeat until the deadline: pick **one** idea (rotate the search
-   directions in `program.md` §4, **swing for big wins** over tiny tweaks), edit `train.py`,
-   run `python vast.py exp --train train.py` in the foreground, log the result with
+   directions in `program.md` §4, **swing for big wins** over tiny tweaks; prefer the ranked
+   open ideas from `RESEARCH_LOG.md` and never re-try a logged dead end), edit `train.py`, run
+   `python vast.py exp --train train.py` in the foreground, log the result with
    `python vast.py log`, then **KEEP** if `median_km` improved vs the champion (commit on the
    branch) or **RESET** otherwise (`git checkout -- train.py`). Update `findings.md` every
    iteration. Between experiments, use the `research` skill for literature-grounded ideas.
 
-5. **NEVER STOP.** When one experiment finishes, immediately pick the next and run it — keep
+5. **Persist knowledge durably (so the NEXT session inherits it).** This is what makes the run
+   cumulative — do it, don't skip it:
+   - **On every KEEP** and at least every ~30 min, update **`RESEARCH_LOG.md`**: refresh
+     *Current champion* (score + one-line + the champion commit hash), append to *Banked wins*,
+     and record any failure in *Dead ends & mistakes* (what was tried + the takeaway) and any
+     new *Open ideas*. Then commit and push it: `git add RESEARCH_LOG.md && git commit -m
+     "log: <what changed>" && git push origin HEAD` — and push the champion branch too
+     (`git push origin <autoresearch-branch>`), so nothing is lost if the box/session dies.
+   - **At session end / wind-down:** write a dated block in *Session history*, do a final
+     `RESEARCH_LOG.md` update + push, then **carry the champion forward**: fast-forward `master`
+     to the champion branch and push it (`git checkout master && git merge --ff-only
+     <autoresearch-branch> && git push origin master`). Because the next `/goal` session branches
+     off `master`, it will start its baseline from THIS session's champion — accumulating
+     progress across sessions while still obeying ENGINE's "branch off master".
+
+6. **NEVER STOP.** When one experiment finishes, immediately pick the next and run it — keep
    the GPU busy every minute until the session's hard deadline auto-destroys the box. Before
-   each run, glance at `python vast.py status`; if under ~9 minutes remain, wind down.
+   each run, glance at `python vast.py status`; if under ~9 minutes remain, wind down (step 5
+   end-of-session persistence).
 
 Give me a brief status line when the box is up and after the baseline, then run the loop.
 Report the champion's score and the best ideas as you go.
