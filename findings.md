@@ -10,7 +10,9 @@ hierarchical heads, tau up 110, IMG_SIZE 384, augmentation, TTA, EMA, GeM.
 | 9 | baseline re-run (337e4a7, smoke-tests val-cell metrics) | 282.8 | champion seed (=283.4 within noise); cell_top1 14.0%, lift 288x |
 | 10 | panorama InfoNCE aux (pair sampler, λ=0.5, T=0.1, proj 256) | 306.1 | discard (+23 WORSE; cell_top1 14.0→11.9 — pair batches halve per-batch location diversity at 8-min budget) |
 | 11 | hierarchical heads 64/512/2048, log-space combine, CE w=0.25/0.5/1.0 | 263.9 | **KEEP** (−18.9; mean 1399→1219, acc@2500 87.7→89.9% — fixes wrong-region mass) |
-| 12 | tau 75→110 (gradient points up; on new champion) | | running |
+| 12 | tau 75→110 (on hier champion) | 271.0 | discard (+7.1; tau sweep DONE — 75 frozen) |
+| 13 | IMG_SIZE 448→384 (+35% steps at same budget) | 238.0 | **KEEP** (−25.9! 961 steps, cell_top1 15.2%, vram 13.7GB) |
+| 14 | bs48×1 @384 (same eff. batch, single fused fwd) | | running |
 
 
 ## Champion

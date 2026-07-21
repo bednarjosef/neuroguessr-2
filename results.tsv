@@ -12,3 +12,5 @@ ae5e29f	316.372293	17.8	discard	tau 75->40: 316.4, sharper labels HURT at 2048 c
 337e4a7	282.777192	17.8	keep	session2 baseline re-run @337e4a7: 282.8 (~= champ 283.4, noise); val cell_top1 14.0% lift 288x
 337e4a7	306.107097	17.9	discard	pano InfoNCE aux (pairs, lam0.5): 306.1 (+23 WORSE); cell_top1 14.0->11.9 — pair batches halve location diversity at 8min budget
 7acb12a	263.898983	17.9	keep	hier heads 64/512/2048 log-space: 263.9 (-18.9 KEEP); mean 1219, acc2500 89.9% — coarse levels fix wrong-region mass
+7acb12a	271.002693	17.9	discard	tau 75->110 on hier champion: 271.0 (+7.1 worse) — tau sweep DONE, 75 frozen
+a2f907c	238.025489	13.7	keep	IMG 384: 238.0 (-25.9 KEEP); 961 steps (+50%), cell_top1 15.2%, vram 13.7GB — throughput still king
