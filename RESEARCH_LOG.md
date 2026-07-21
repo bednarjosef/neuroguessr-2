@@ -135,6 +135,28 @@ Original scout list 2026-07-21 (PIGEON CVPR'24, OSV-5M CVPR'24, GeoCLIP NeurIPS'
 13. GeM pooling over patch tokens. (small/medium)
 14. Geolocation-safe augmentation: RandomResizedCrop(0.5–1.0)+color jitter (no flips!). (small)
 
+## Literature sweep (2026-07-21, post-session 2) — new idea sources
+
+- **Semivariogram hard negatives** (arxiv 2509.21573): formalizes exactly Josef's geo-contrastive
+  idea — image dissimilarity grows with geo distance only up to a RANGE, beyond which it
+  plateaus; they mine hard negatives as pairs whose feature distance is far below the
+  semivariogram-expected value for their geo distance. Supports open-idea #1; use their
+  range-based weighting instead of raw sim×distance.
+- **HierLoc (ICLR'26)**: hierarchy of geographic ENTITIES (country→region→city) embedded in
+  hyperbolic space; images aligned to entity embeddings via geo-weighted contrastive. SOTA on
+  OSV-5M. Cheap partial adoption: add entity-level (country_code) alignment aux — we already
+  bank hierarchical CELL heads; an entity head is complementary (open idea #6 upgraded).
+- **Pinpoint (arxiv 2606.04133)**: retrieval + RERANKING; reranking stage adds +23.9pp acc@1km
+  over retrieval-only. Strong evidence for open-idea #8 (top-K rerank) being the next big win.
+- **Scaling Geo-Localization to Continent Level (NeurIPS'25, Lindenberger)**: classification
+  prototypes + aerial-image embeddings; 68% within 200m over Europe. Aerial cross-view is out
+  of scope for our harness (no aerial data in the frozen subset) but "per-cell PROTOTYPE
+  embeddings learned via proxy classification" is adoptable: rerank top-K cells by cosine
+  between image feature and learned cell prototype (= a learned reranker with zero extra data).
+- **PIGEON semantic geocells**: admin-boundary/OSM-based cells instead of k-means — better
+  cell semantics claimed. Only worth it if we can build cells from train metadata
+  (country_code/subdivision) without new downloads: hierarchy country→subdivision→kmeans-within.
+
 ## Environment / gotchas learned
 
 _(anything about the box, dataset, VRAM ceilings, throughput, DINOv3 quirks, etc.)_
