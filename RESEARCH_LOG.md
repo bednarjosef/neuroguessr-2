@@ -14,11 +14,11 @@ Objective: **`median_km`** (median great-circle error on the val split), **lower
 
 ## Current champion
 
-- **median_km:** 283.4
-- **train.py commit:** ae5e29f (branch autoresearch/2026-07-21)
-- **one-line:** baseline + no-grad-ckpt (bs24x2, 32 workers) + 2048 geocells/topk16 + mode-seeking
-  prediction (T=0.5, 1000km locality around top-1)
-- **full metric panel (last full-val eval):** mean_km 1404 · acc@25km 2.6% · acc@200km 39.8% · acc@2500km 87.6% · geoguessr 3489
+- **median_km:** 263.9
+- **train.py commit:** 7acb12a (branch autoresearch/2026-07-21b)
+- **one-line:** no-grad-ckpt (bs24x2, 32w) + 2048 geocells/topk16 + mode-seeking prediction
+  (T=0.5, 1000km locality) + hierarchical heads 64/512/2048 (log-space combine, w 0.25/0.5/1.0)
+- **full metric panel (last full-val eval):** mean_km 1219 · acc@200km 41.5% · acc@2500km 89.9% · geoguessr 3596 · val cell_top1 13.3% (lift 273x)
 
 ## Banked wins (confirmed to help — keep these, don't re-litigate)
 
@@ -30,6 +30,9 @@ _(each entry: the change, the median_km delta, and why it likely helped)_
 - **Mode-seeking prediction rule** (398.5→283.4, −29%!): softmax at T=0.5 + only average top-k
   cells within 1000 km of the top-1. Median rewards mode-seeking; the old global spherical mean
   averaged cross-continent mass into oceans. mean_km worsens slightly — expected, fine.
+- **Hierarchical multi-resolution heads** (282.8→263.9, −6.7%, session 2): shared trunk + linear
+  heads at 64/512/2048 cells; coarse logits added onto child fine cells (log-space) at prediction;
+  coarse CE aux w=0.25/0.5. Fixes wrong-region errors (mean 1399→1219, acc@2500 87.7→89.9%).
 
 ## Dead ends & mistakes (tried, did NOT help or broke — do NOT repeat)
 
@@ -46,6 +49,10 @@ _(each entry: what was tried, what happened, and the takeaway so it isn't retrie
   longer budgets.
 - **tau 75→40 at 2048 cells**: 316.4, clearly WORSE (−12%). The 75km haversine smoothing is
   load-bearing; if anything try tau UP, not down.
+- **Panorama InfoNCE aux (λ=0.5, pair batches)**: 306.1 vs 282.8 baseline, +23 WORSE; val
+  cell_top1 fell 14.0→11.9%. The same-pano pair sampler halves distinct locations per batch —
+  at 8-min budgets diversity beats the contrastive signal. Retry only with much longer budgets
+  or a sampler that keeps ≥75% unique locations.
 
 ## Open ideas / next to try (ranked)
 

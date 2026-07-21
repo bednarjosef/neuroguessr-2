@@ -8,13 +8,15 @@ hierarchical heads, tau up 110, IMG_SIZE 384, augmentation, TTA, EMA, GeM.
 | # | idea | median_km | verdict |
 |---|------|-----------|---------|
 | 9 | baseline re-run (337e4a7, smoke-tests val-cell metrics) | 282.8 | champion seed (=283.4 within noise); cell_top1 14.0%, lift 288x |
-| 10 | panorama InfoNCE aux (pair sampler, λ=0.5, T=0.1, proj 256) | | running |
+| 10 | panorama InfoNCE aux (pair sampler, λ=0.5, T=0.1, proj 256) | 306.1 | discard (+23 WORSE; cell_top1 14.0→11.9 — pair batches halve per-batch location diversity at 8-min budget) |
+| 11 | hierarchical heads 64/512/2048, log-space combine, CE w=0.25/0.5/1.0 | 263.9 | **KEEP** (−18.9; mean 1399→1219, acc@2500 87.7→89.9% — fixes wrong-region mass) |
+| 12 | tau 75→110 (gradient points up; on new champion) | | running |
 
 
 ## Champion
 
-- **283.4 km** @ ae5e29f: no-ckpt bs24x2/32w + 2048 cells/topk16 + mode-seeking prediction
-  (T=0.5, r=1000km). Panel: mean 1404 | acc@25 2.6% | acc@200 39.8% | geoguessr 3489.
+- **263.9 km** @ 7acb12a: prev champion + hierarchical heads 64/512/2048 (log-space combine,
+  coarse CE w 0.25/0.5). Panel: mean 1219 | acc@200 41.5% | acc@2500 89.9% | geoguessr 3596.
 
 ## Notes
 
