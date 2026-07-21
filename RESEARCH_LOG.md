@@ -122,8 +122,10 @@ _(one dated block per session: dates, champion at start → end, headline result
   locality restriction around the top-1 cell is essential.
 - Infra: ~50 min lost to two bad Vast boxes (broken HF peering). Fixes now durable: parallel
   sharded downloader in prepare.py (committed), rent-screen-by-curl pattern, and the prepared
-  cache uploaded to HF `josefbednar/streetview-acw-ar-cache` (argeo_cache.tar) — next session
-  can pull ONE tar instead of streaming (verify upload completed; it was racing the deadline).
+  cache upload to HF `josefbednar/streetview-acw-ar-cache` was attempted but DID NOT COMPLETE
+  (box's HF upload throttled to <1MB/s; ~85% of new data at teardown). Next session: either
+  re-download via the parallel downloader (~20 min) or redo the tar upload early from a box
+  with good HF peering, THEN switch prepare to the tar path.
 - Follow-ups for next session: panorama InfoNCE aux (top pick), hierarchical heads, tau up,
   IMG_SIZE 384 throughput trade. W&B has per-run cell_top1/top5 + lift metrics now.
 
