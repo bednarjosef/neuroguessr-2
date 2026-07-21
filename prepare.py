@@ -181,37 +181,48 @@ def _stream_shard_worker(args):
     split (deterministic), shuffles within its stream (seed-pinned), and saves its quota.
     The union over workers IS the frozen train subset — fixed given (nshards, seed, quota)."""
     widx, nshards, quota, img_dir = args
+    # Dead-peer robustness (does NOT change the subset): sockets time out instead of
+    # blocking forever, and a died stream is re-created from scratch — the stream is
+    # deterministic given (shard, seed), so a retry yields the identical rows.
+    import socket
+    socket.setdefaulttimeout(90)
     from datasets import load_dataset
-    ds = load_dataset(DATASET_NAME, split="train", streaming=True)
-    ds = ds.shard(num_shards=nshards, index=widx)
-    ds = ds.shuffle(seed=DATA_SEED + widx, buffer_size=SHARD_SHUFFLE_BUFFER)
-    rows = []
-    t0 = time.time()
-    for ex in ds:
-        if len(rows) >= quota:
-            break
+    for attempt in range(5):
         try:
-            lat = float(ex["latitude"]); lon = float(ex["longitude"])
-        except (KeyError, TypeError, ValueError):
-            continue
-        img = ex.get("image")
-        if img is None:
-            continue
-        fname = f"w{widx:02d}_{len(rows):06d}.jpg"
-        try:
-            _resize_for_storage(img).save(os.path.join(img_dir, fname), "JPEG", quality=90)
-        except Exception:
-            continue
-        rec = {"path": fname, "latitude": lat, "longitude": lon}
-        for c in META_COLS:
-            if c not in ("latitude", "longitude") and c in ex:
-                rec[c] = ex[c]
-        rows.append(rec)
-        if widx == 0 and len(rows) % 250 == 0:
-            rate = len(rows) / (time.time() - t0 + 1e-9)
-            print(f"  train[w0]: {len(rows)}/{quota} ({rate:.1f} img/s/worker, ~{rate*nshards:.0f} img/s total)",
+            ds = load_dataset(DATASET_NAME, split="train", streaming=True)
+            ds = ds.shard(num_shards=nshards, index=widx)
+            ds = ds.shuffle(seed=DATA_SEED + widx, buffer_size=SHARD_SHUFFLE_BUFFER)
+            rows = []
+            t0 = time.time()
+            for ex in ds:
+                if len(rows) >= quota:
+                    break
+                try:
+                    lat = float(ex["latitude"]); lon = float(ex["longitude"])
+                except (KeyError, TypeError, ValueError):
+                    continue
+                img = ex.get("image")
+                if img is None:
+                    continue
+                fname = f"w{widx:02d}_{len(rows):06d}.jpg"
+                try:
+                    _resize_for_storage(img).save(os.path.join(img_dir, fname), "JPEG", quality=90)
+                except Exception:
+                    continue
+                rec = {"path": fname, "latitude": lat, "longitude": lon}
+                for c in META_COLS:
+                    if c not in ("latitude", "longitude") and c in ex:
+                        rec[c] = ex[c]
+                rows.append(rec)
+                if widx == 0 and len(rows) % 250 == 0:
+                    rate = len(rows) / (time.time() - t0 + 1e-9)
+                    print(f"  train[w0]: {len(rows)}/{quota} ({rate:.1f} img/s/worker, ~{rate*nshards:.0f} img/s total)",
+                          flush=True)
+            return rows
+        except Exception as e:
+            print(f"  train[w{widx:02d}]: stream died ({type(e).__name__}: {e}); retry {attempt+1}/5",
                   flush=True)
-    return rows
+    raise RuntimeError(f"worker {widx}: stream failed 5x")
 
 
 def _download_train_parallel(n, img_dir, meta_path):
