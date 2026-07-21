@@ -41,12 +41,38 @@ _(each entry: what was tried, what happened, and the takeaway so it isn't retrie
   accuracy the error is dominated by WRONG-CELL selection, not within-cell resolution — skip
   further within-cell refinement (incl. retrieval refinement) until cell_top1 is much higher.
 - Run-to-run noise on the full-val median is ~±3–5 km: don't crown wins smaller than ~8 km.
+- **Unfreezing last 2 blocks** (alone 278.3, +T0.35 combo 280.6 vs champion 283.4): ~1–2% real
+  at best, never cleared the noise bar in two runs. Not worth re-trying as-is; maybe with
+  longer budgets.
+- **tau 75→40 at 2048 cells**: 316.4, clearly WORSE (−12%). The 75km haversine smoothing is
+  load-bearing; if anything try tau UP, not down.
 
 ## Open ideas / next to try (ranked)
 
 _(carry unfinished/promising directions forward across sessions)_
 
-From literature scout 2026-07-21 (PIGEON CVPR'24, OSV-5M CVPR'24, GeoCLIP NeurIPS'23):
+Refreshed at end of session 2026-07-21 (champion 283.4). Cell SELECTION is the bottleneck —
+prioritize ideas that improve which cell wins, not within-cell refinement:
+
+1. **Panorama-aware InfoNCE auxiliary** (OSV-5M's best aux; needs a same-panorama batch
+   sampler — 4 views share a panoid/location in the train metadata). Untried, top pick.
+2. **Hierarchical multi-resolution heads** (64/512/2048, combine in log-space) — targets
+   wrong-continent/region errors that locality can't fix. Untried.
+3. **Prediction-rule micro-sweep is DONE** (grid diag): T0.35/r1000 ≈ −5km on quick-val but
+   didn't confirm on full val; r=400 neutral; no-locality catastrophic (+54). Don't re-sweep.
+4. **tau UP (75→110/150)** at 2048 cells — 40 was much worse, so the gradient points up.
+   One cheap shot.
+5. **Bigger effective capacity via throughput**: IMG_SIZE 448→384 (−27% tokens ≈ +35% steps,
+   epoch coverage 0.53→~0.7) — accuracy/steps tradeoff unknown, worth one run.
+6. **Geolocation-safe augmentation** (RandomResizedCrop 0.5–1.0, color jitter; NO flips) —
+   only 0.5 epochs seen so overfitting is mild, but cheap to test.
+7. TTA without flips (3 crops, average probs after temp-sharpening).
+8. EMA of trainables.
+9. GeM pooling over patch tokens (cls_mean was neutral; GeM is the stronger variant).
+10. Retrieval refinement & offset regression: PARKED until cell_top1 improves substantially
+    (both tested within-noise at current accuracy).
+
+Original scout list 2026-07-21 (PIGEON CVPR'24, OSV-5M CVPR'24, GeoCLIP NeurIPS'23), for reference:
 
 1. **Finer geocells 512→2048** — median_km is floored by cell size; PIGEON uses ~2000 cells. Grow PRED_TOPK 8→16, drop cells with <5 points. (big)
 2. **Retrieval refinement at prediction** — cache train-image embeddings + coords; at eval, refine top-K cell guess by cosine-similarity match against train embeddings within those cells (PIGEON's biggest ablation win). (big)
@@ -87,6 +113,19 @@ _(anything about the box, dataset, VRAM ceilings, throughput, DINOv3 quirks, etc
 ## Session history
 
 _(one dated block per session: dates, champion at start → end, headline results)_
+
+### 2026-07-21 (session 1)
+- Champion at start: none → at end: **283.4 km** (ae5e29f)
+- Experiments run: 9 (1 baseline, 3 KEEP, 4 discard, 1 OOM crash)
+- Headline: 535.4 → 283.4 (−47%) via throughput unbrake (−19%), 2048 geocells (−8%),
+  mode-seeking prediction rule (−29%). Big lesson: median_km rewards mode-seeking inference;
+  locality restriction around the top-1 cell is essential.
+- Infra: ~50 min lost to two bad Vast boxes (broken HF peering). Fixes now durable: parallel
+  sharded downloader in prepare.py (committed), rent-screen-by-curl pattern, and the prepared
+  cache uploaded to HF `josefbednar/streetview-acw-ar-cache` (argeo_cache.tar) — next session
+  can pull ONE tar instead of streaming (verify upload completed; it was racing the deadline).
+- Follow-ups for next session: panorama InfoNCE aux (top pick), hierarchical heads, tau up,
+  IMG_SIZE 384 throughput trade. W&B has per-run cell_top1/top5 + lift metrics now.
 
 <!-- template:
 ### 2026-07-21

@@ -2,9 +2,8 @@
 
 ## Champion
 
-- **433.3 km** @ 9890292: champion = baseline + no grad-ckpt (bs24x2 accum, 32 workers).
-  661 steps = 0.53 epochs, 17.8GB VRAM. Panel: mean 1292 | acc@25 0.9% | acc@200 25.9% |
-  acc@2500 88.6% | geoguessr 3249.
+- **283.4 km** @ ae5e29f: no-ckpt bs24x2/32w + 2048 cells/topk16 + mode-seeking prediction
+  (T=0.5, r=1000km). Panel: mean 1404 | acc@25 2.6% | acc@200 39.8% | geoguessr 3489.
 
 ## Notes
 
@@ -21,7 +20,10 @@
 | 2 | geocells 512→2048, topk 16 | 398.5 | **KEEP** (−8%) |
 | 3 | cls_mean pooling | 395.5 | discard (within ±3–5km noise) |
 | 4 | per-cell offset regression head | 395.7 | discard (within noise → within-cell res NOT the bottleneck; cell selection is) |
-| 5 | mode-seeking pred rule (T=0.5 + 1000km locality) | running | |
+| 5 | mode-seeking pred rule (T=0.5 + 1000km locality) | 283.4 | **KEEP** (−29%!) |
+| 6 | unfreeze last 2 blocks (+grid diag) | 278.3 | discard (−5.1, below 8km noise bar; grid: T0.35/r1000 best on quick-val, no-locality=332 terrible) |
+| 7 | unfreeze + T=0.35 combo | 280.6 | discard (within noise again) |
+| 8 | tau 75→40 (sharper labels @ 2048 cells) | 316.4 | discard (clearly worse — smoothing at 75 is load-bearing) |
 
 ## Banked
 
