@@ -1,9 +1,13 @@
 # autoresearch — session start
 
-This is a general **autonomous research swarm**: an orchestrator rents a multi-GPU box and
-runs a pool of parallel experiments (one per GPU) that each test a mutation of one
-**experiment artifact** to improve a **measured objective**, compounding wins over a session.
-**It can research almost anything**
+This is a general **autonomous research agent**: a single agent rents a GPU box and runs a
+**keep/reset ratchet** — it mutates one **experiment artifact**, runs it once, and keeps the
+change only if it improved a **measured objective**, building a steadily-better champion over a
+session. One experiment at a time, no parallel experiments — the simplicity of
+[karpathy/autoresearch](https://github.com/karpathy/autoresearch), with Vast wired in so the
+experiments run on a rented GPU when there's no local one. (A single experiment can still shard
+across multiple GPUs via `torch.distributed` when a model needs them — `--gpus N` — it's just
+never *several* experiments at once.) **It can research almost anything**
 that fits a simple contract (below) — optimizing an ML model, an algorithm, a GPU kernel, a
 solver, a prompt, a trading rule, a compression scheme, a config… **LLM pretraining is just
 the default instantiation that ships in the repo** (`train.py` + `prepare.py`, objective
@@ -11,16 +15,17 @@ the default instantiation that ships in the repo** (`train.py` + `prepare.py`, o
 
 Two docs drive a session:
 - **`program.md`** — the **mission & config** (what to optimize, the metric, the knobs, the
-  axes). Editable by you and the human.
-- **`ENGINE.md`** — the **fixed engine** (how the orchestrator runs the loop). **Never edit it.**
+  search directions). Editable by you and the human.
+- **`ENGINE.md`** — the **fixed engine** (how the agent runs the loop). **Never edit it.**
 
 The roles (the LLM default in parentheses):
-- **The experiment** (`train.py`) — the one artifact the orchestrator edits; running it prints a
+- **The experiment** (`train.py`) — the one artifact the agent edits; running it prints a
   `OBJECTIVE: <number>` line.
 - **The harness** (`prepare.py`) — the **frozen** task/data/evaluator that computes the
   objective honestly, so the score can't be gamed.
 - **The objective** — a metric name + direction, set via `vast.py start --metric NAME --goal min|max`.
-- **The axes** — disjoint families of edits to the experiment (so parallel slots never overlap).
+- **The search directions** — a menu of idea families the agent rotates through so the search
+  stays broad instead of tunneling on one knob.
 
 At the **start of every session**, do ONE of the following:
 
@@ -41,8 +46,11 @@ else, say you'll get them set up first), **run onboarding**:
      so we can make it a **frozen, un-gameable evaluator**? (For LLM: train, then `evaluate_bpb`.)
    - **Two time budgets, separately:** per-experiment minutes (one run; default 5) and session
      hours (whole run before auto-destroy; default 3, ~2–3 h typical).
-   - **Hardware:** GPU type (default `RTX_4090`), parallel GPUs (default 4), price cap
-     ($0.60/GPU/hr). If the task doesn't need a GPU, the box still has CPUs — note it.
+   - **Hardware:** GPU type (default `RTX_4090`) and **how many GPUs** (default 1). Use `>1`
+     **only** when a single model must shard across GPUs via `torch.distributed` (e.g. 2–4× 5090
+     for a big model) — it's still one experiment at a time, never parallel experiments, and
+     needs a distributed-aware `train.py`. Price cap is per-GPU/hr (default $0.60). If the task
+     doesn't need a GPU, the box still has CPUs — note it.
    - **Constraints / must-keeps / ideas to try first.**
 
 2. **Tailor the repo to their answers.**
@@ -52,15 +60,18 @@ else, say you'll get them set up first), **run onboarding**:
      1. **Rewrite `train.py` as the experiment** for the new task. It must: run one trial and
         **print exactly one `OBJECTIVE: <number>`** summary line (named whatever you choose),
         plus any diagnostics as extra `name: number` lines. Keep it self-contained and
-        deterministic where possible.
+        deterministic where possible. (If it needs to shard across GPUs via `torch.distributed`
+        for `--gpus N`, init the process group from the torchrun env — `RANK`/`WORLD_SIZE`/
+        `LOCAL_RANK`, or read `AR_NUM_GPUS` — and print the `OBJECTIVE:` line on **rank 0 only**.)
      2. **Rewrite `prepare.py` as the frozen harness/evaluator** — one-time setup (data/assets)
         + the function that computes the objective. **Reuse its deadline helpers**
         (`start_training_clock` / `except TrainingTimeUp` / `stop_training_clock`) so every run
         is hard-bounded to the per-experiment budget and still emits a final score.
      3. **Set the objective:** the session will use `vast.py start --metric OBJECTIVE --goal min|max`.
         Record that name/direction in `program.md` §2/§3.
-     4. **Define disjoint axes in `program.md` §4** for the new domain — partition by *what part
-        of the experiment* a change touches, so two slots can never try the same thing.
+     4. **Define the search directions in `program.md` §4** for the new domain — a menu of idea
+        families (grouped by *what part of the experiment* a change touches) the agent rotates
+        through to keep the search broad.
      5. **Adjust deps** in `pyproject.toml` if the task needs different libraries (installed at setup).
    - In all cases set §3 config to their choices and **remove the `<!-- AUTORESEARCH:UNCONFIGURED -->`
      marker** from `program.md`.
@@ -75,10 +86,10 @@ else, say you'll get them set up first), **run onboarding**:
 ## B) Already configured — proceed normally
 
 No marker → the mission is set. Read `program.md` + `ENGINE.md`, then do what the user asked.
-To start a session, follow `ENGINE.md`: `python vast.py start --metric … --goal … …`, then
-run the round loop — each round **you edit every slot's `train.py` and run them all in parallel
-with `python vast.py round`** (the orchestrator runs the experiments itself, one per GPU),
-alongside one research-scout subagent.
+To start a session, follow `ENGINE.md`: `python vast.py start --metric … --goal … …`, run the
+baseline once (`python vast.py exp --train train.py`), then run the ratchet loop — **pick one
+idea, edit `train.py`, run it once with `python vast.py exp`, and keep it only if it beats the
+champion** — using the `research` skill between experiments for fresh, literature-grounded ideas.
 
 ---
 

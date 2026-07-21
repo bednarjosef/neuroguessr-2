@@ -1,45 +1,43 @@
 #!/usr/bin/env python3
-"""Vast.ai control plane for autoresearch — one multi-GPU box per session.
+"""Vast.ai control plane for autoresearch — one single-GPU box per session.
 
-The research loop and the AI agents run on YOUR laptop. The only thing that goes
-to Vast is the GPU work: each experiment is `train.py` running for the fixed
-5-minute budget. Because `train.py` honors CUDA_VISIBLE_DEVICES, N experiments can
-run truly in parallel on one N-GPU box — each pinned to its own GPU (separate
-VRAM => no interference) and its own slice of CPU cores via taskset (the dataloader
-tokenizes on the CPU, so disjoint cores keep concurrent runs from stealing each
-other's throughput). `bench` measures any remaining contention so results stay
-objective.
+The research loop and the agent run on YOUR laptop. The only thing that goes to
+Vast is the GPU work: each experiment is `train.py` running for the fixed
+per-experiment budget (default 5 min) on a rented box. This exists so you can
+drive an autonomous research loop from a machine with no local GPU. It runs ONE
+experiment at a time — never several in parallel — but that one experiment may be
+sharded across several GPUs with torch.distributed (torchrun) when a model needs
+more than one. Rent 1 GPU (default) or N with `--gpus N`; the box tears itself
+down at a hard deadline.
 
 Safety model (same spirit as the battle-tested arc script):
   * Exactly ONE tracked box at a time, recorded in .vast_state.json with its price
     and a hard deadline. `watchdog` auto-destroys at the deadline. `status` shows
     cost so far. `down` tears it down; `ps`/`nuke` catch orphans across the account.
-  * `up` refuses offers above the per-GPU price cap and always prints the bill rate.
+  * `up` refuses offers above the price cap and always prints the bill rate.
 
 Auth: run `vastai set api-key <KEY>` once (stored locally). An ssh key is
 auto-generated + registered if missing.
 
-Typical session (what program.md drives the agent to do):
-  vast.py up --gpus 4 --hours 3        # rent cheapest qualifying 4-GPU box
-  vast.py watchdog &                   # background auto-destroy at the deadline
-  vast.py setup                        # uv sync + prepare.py + detect GPUs/CPUs
-  vast.py bench                        # confirm GPUs equivalent + measure contention
-  vast.py exp --slot 0 --train worktrees/slot0/train.py   # one experiment on GPU 0 (baseline/re-test)
-  vast.py round                        # ALL slots in parallel (orchestrator runs a whole round)
-  vast.py down                         # destroy + clear state (or let watchdog do it)
+Typical session (what ENGINE.md drives the agent to do):
+  vast.py start --hours 3 --minutes 5      # rent + watchdog + setup, one command
+  vast.py exp --train train.py             # run one experiment, print val_bpb/vram
+  vast.py log <commit> <score> <mem> keep "baseline"   # append to results.tsv
+  vast.py down                             # destroy + clear state (or let watchdog)
 
 Commands:
-  search   list cheapest qualifying offers (per-GPU price)
+  search   list cheapest qualifying offers (1 GPU by default, N with --gpus)
   up       rent cheapest qualifying box + record price/deadline
-  status   instance status, GPUs/CPUs, uptime, est. cost, deadline
+  start    one-shot bring-up: up + watchdog + setup
+  status   instance status, uptime, est. cost, deadline
   sync     upload the repo to the box (tar over ssh)
-  setup    sync + install uv + uv sync + prepare.py + detect GPU/CPU topology
-  bench    solo + concurrent throughput per GPU (objectivity check)
-  exp      --slot N --train PATH: run that train.py on GPU N, print val_bpb/vram
-  round    run every slot's train.py at once, in parallel across the GPUs (one whole round)
+  setup    sync + install deps + prepare.py (data/tokenizer) + detect GPU
+  exp      --train PATH: run that train.py on the GPU, print val_bpb/vram
   run      run an arbitrary command in the remote repo dir
   log      atomically append a row to local results.tsv
   pull     download a file/dir back from the box
+  dashboard  live local web view (chart, leaderboard, cost, deadline)
+  reap     kill a stray/ghost train.py run on the box
   watchdog loop; destroy at the recorded deadline (run in background)
   extend   push the deadline out
   down     destroy the tracked box + clear state
@@ -54,12 +52,10 @@ import html
 import json
 import re
 import shutil
-import statistics
 import subprocess
 import sys
 import time
 import webbrowser
-from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from string import Template
@@ -82,7 +78,7 @@ MIN_CUDA = 12.1          # template torch is cu12x; host driver must support >= 
 MIN_RELIABILITY = 0.98
 MIN_INET_DOWN = 300      # Mbit/s — HF data + torch wheels download fast
 MIN_DLPERF = 110         # avoid throttled/junk hosts (a real 4090 is ~150)
-MIN_CPU_PER_GPU = 6      # the dataloader tokenizes on CPU; give each slot real cores
+MIN_CPU_PER_GPU = 6      # the dataloader tokenizes on CPU; give each GPU real cores
 MIN_RAM_PER_GPU = 16     # GB
 BLOCK_COUNTRIES = ("CN",)  # HuggingFace is often blocked/slow here
 
@@ -183,8 +179,8 @@ def _ssh_endpoint(iid) -> tuple[str | None, int | None]:
 # --- offers --------------------------------------------------------------------
 
 def find_offers(gpu: str, gpus: int, max_price_per_gpu: float) -> list[dict]:
-    # verified=true keeps Vast's vetted hosts; num_gpus pins a whole N-GPU machine
-    # (all GPUs identical => cross-slot comparability).
+    # verified=true keeps Vast's vetted hosts; num_gpus pins a whole N-GPU machine (all GPUs
+    # identical) so ONE experiment can shard a model across them with torch.distributed.
     offers = vast(["search", "offers",
                    f"gpu_name={gpu} num_gpus={gpus} rentable=true verified=true",
                    "-o", "dph_total"], raw=True) or []
@@ -214,15 +210,6 @@ def fmt_offer(o: dict) -> str:
             f"{n}x {o['gpu_name']}  cpu={cpu:.0f}  dlperf={o.get('dlperf', 0):.0f}  "
             f"cuda={o.get('cuda_max_good')}  inet={o.get('inet_down', 0):.0f}↓  "
             f"{o.get('geolocation', '?')}")
-
-
-# --- topology / slots ----------------------------------------------------------
-
-def slot_cores(s: dict, slot: int) -> tuple[int, str]:
-    """Return (cores_per_slot, taskset_range) for a slot, e.g. (8, '8-15')."""
-    cps = max(1, s.get("cpu_cores", s["num_gpus"]) // s["num_gpus"])
-    lo = slot * cps
-    return cps, f"{lo}-{lo + cps - 1}"
 
 
 # --- commands ------------------------------------------------------------------
@@ -262,7 +249,7 @@ def cmd_up(a) -> None:
     save_state({
         "instance_id": iid, "offer_id": best["id"], "dph": best["dph_total"],
         "gpu": best["gpu_name"], "num_gpus": best.get("num_gpus", a.gpus),
-        "cpu_cores": int(best.get("cpu_cores_effective") or best.get("cpu_cores", 0)),
+        "launcher": getattr(a, "launcher", "auto"),  # auto | torchrun | single
         "created_at": now, "deadline": now + a.hours * 3600,
         "time_budget_s": int(getattr(a, "minutes", 5) * 60),  # per-experiment compute budget
         "metric": getattr(a, "metric", PRIMARY_METRIC_DEFAULT),  # objective name (domain-agnostic)
@@ -288,15 +275,15 @@ def _spawn_watchdog() -> None:
 
 
 def cmd_start(a) -> None:
-    """One-shot session bring-up: rent → watchdog → setup → bench. Collapses four manual
-    steps into one robust command so the orchestrator starts fast with sane defaults."""
+    """One-shot session bring-up: rent → watchdog → setup. Collapses the manual steps into
+    one robust command so the agent starts fast with sane defaults. The first `exp` run
+    (the baseline) doubles as the smoke test and warms the compile cache."""
     cmd_up(a)            # rents + waits until running (sys.exit on failure)
     _spawn_watchdog()
-    cmd_setup(a)         # template torch + light deps + data + topology
-    cmd_bench(a)         # ~1-min objectivity check + warms per-slot compile caches
+    cmd_setup(a)         # template torch + light deps + data + detect GPU
     print("\n=== READY ===")
-    print("box up + prepared + benched. Next (orchestrator): create worktrees, run the "
-          "baseline on slot 0, then start the round loop. See ENGINE.md.")
+    print("box up + prepared. Next (agent): run the baseline once with "
+          "`python vast.py exp --train train.py`, then start the ratchet loop. See ENGINE.md.")
 
 
 def _wait_running() -> None:
@@ -323,17 +310,15 @@ def cmd_status(a) -> None:
         return
     info = vast(["show", "instance", str(s["instance_id"])], raw=True, check=False)
     up_h = (time.time() - s["created_at"]) / 3600
-    print(f"instance {s['instance_id']}  {s['num_gpus']}x {s['gpu']}  "
-          f"${s['dph']:.3f}/hr  cpu_cores={s.get('cpu_cores', '?')}  "
-          f"exp_budget={s.get('time_budget_s', 300)//60}min  "
+    print(f"instance {s['instance_id']}  {s.get('num_gpus', 1)}x {s['gpu']}  "
+          f"${s['dph']:.3f}/hr  exp_budget={s.get('time_budget_s', 300)//60}min  "
+          f"launcher={_effective_launcher(s)}  "
           f"objective={s.get('metric', PRIMARY_METRIC_DEFAULT)}({s.get('goal', 'min')})")
     print(f"  status: {info.get('actual_status') if isinstance(info, dict) else '?'}")
     print(f"  uptime: {up_h:.2f}h   est. cost so far: ${up_h * s['dph']:.2f}")
     print(f"  deadline in: {(s['deadline'] - time.time()) / 3600:.2f}h")
     if s.get("host"):
         print(f"  ssh -p {s['port']} root@{s['host']}")
-        print(f"  slots: " + ", ".join(f"slot{i}->gpu{i} (cores {slot_cores(s, i)[1]})"
-                                        for i in range(s["num_gpus"])))
 
 
 def _resolve_endpoint(s: dict) -> dict:
@@ -354,8 +339,8 @@ def cmd_sync(a) -> None:
         sys.exit("ssh never came up; check `vast.py status` / the Vast UI")
     print(f"uploading repo -> {REMOTE_DIR} (tar over ssh)…")
     excludes = " ".join(f"--exclude=./{x}" for x in
-                        (".venv", ".git", "worktrees", ".vast_state.json", "results.tsv",
-                         "__pycache__", "dev", "queue", "results"))
+                        (".venv", ".git", ".vast_state.json", "results.tsv",
+                         "__pycache__", "findings.md", "dev"))
     remote = " ".join(ssh_base(s)) + f" 'mkdir -p {REMOTE_DIR} && tar xzf - -C {REMOTE_DIR}'"
     subprocess.run(f"tar czf - {excludes} -C {REPO} . | {remote}", shell=True, check=True)
     print("upload complete.")
@@ -404,32 +389,26 @@ def cmd_setup(a) -> None:
     p = subprocess.run(ssh_base(s) + [script])
     if p.returncode != 0:
         sys.exit("setup failed; see output above")
-    # Detect which python to run experiments with (template torch vs uv fallback) and
-    # the real GPU/CPU topology from the box (offer metadata can be approximate).
+    # Detect which python to run experiments with (template torch vs uv fallback).
     detect = ssh_run(s, (
         f'if [ -x {DEFAULT_REMOTE_PY} ] && {DEFAULT_REMOTE_PY} -c '
         '"import torch,sys; sys.exit(0 if torch.cuda.is_available() else 1)" 2>/dev/null; '
         f'then echo PY={DEFAULT_REMOTE_PY}; '
         f'elif [ -x {REMOTE_DIR}/.venv/bin/python ]; then echo PY={REMOTE_DIR}/.venv/bin/python; fi; '
-        'echo GPU=$(nvidia-smi -L | wc -l) CPU=$(nproc)')).stdout
+        'echo GPU=$(nvidia-smi -L | wc -l)')).stdout
     pym = re.search(r"PY=(\S+)", detect)
     gm = re.search(r"GPU=(\d+)", detect)
-    cm = re.search(r"CPU=(\d+)", detect)
     if pym:
         s["remote_py"] = pym.group(1)
-    if gm:
+    if gm:  # authoritative GPU count from the box itself (offer metadata can be approximate)
         s["num_gpus"] = int(gm.group(1))
-    if cm:
-        s["cpu_cores"] = int(cm.group(1))
     s["ready"] = True
     save_state(s)
     print(f"\nremote python: {s.get('remote_py', DEFAULT_REMOTE_PY)}  "
           f"({'template torch — no download' if s.get('remote_py') == DEFAULT_REMOTE_PY else 'uv .venv'})")
-    print(f"topology: {s['num_gpus']} GPUs, {s['cpu_cores']} CPU cores "
-          f"=> {slot_cores(s, 0)[0]} cores/slot")
-    print("slots:", ", ".join(f"slot{i}->gpu{i} (cores {slot_cores(s, i)[1]})"
-                              for i in range(s["num_gpus"])))
-    print("next: python vast.py bench   (confirm GPUs are comparable)")
+    print(f"GPUs on box: {s.get('num_gpus', 1)}  (launcher: {_effective_launcher(s)} — "
+          f"one experiment {'sharded across all GPUs' if _effective_launcher(s) == 'torchrun' else 'on one GPU'})")
+    print("next: python vast.py exp --train train.py   (run the baseline)")
 
 
 # --- experiment run ------------------------------------------------------------
@@ -439,6 +418,9 @@ def cmd_setup(a) -> None:
 # LLM-specific, so re-targeting the research to another domain needs no change in this file.
 PRIMARY_METRIC_DEFAULT = "val_bpb"
 METRIC_LINE_RE = r"^([A-Za-z_][A-Za-z0-9_]*):[ \t]*(-?[0-9.]+)[ \t]*$"
+
+REMOTE_RUN = f"{REMOTE_DIR}/run"          # where the experiment's train.py is uploaded/run
+REMOTE_CACHE = f"{REMOTE_DIR}/.inductor"  # persistent torch.compile cache (warm starts)
 
 
 def parse_metrics(text: str) -> dict:
@@ -453,51 +435,60 @@ def parse_metrics(text: str) -> dict:
     return out
 
 
-def _train_invocation(s: dict, slot: int, script: str, cache_dir: str | None = None) -> str:
-    """env -> taskset -> python <script> as one exec chain (no shell, no cd).
+def _effective_launcher(s: dict) -> str:
+    """Resolve the stored launcher preference to a concrete mode for this box. 'auto' ->
+    'torchrun' on a multi-GPU box (one model sharded across the GPUs with torch.distributed),
+    else 'single' (one process on one GPU). Force either with --launcher."""
+    pref = s.get("launcher", "auto")
+    if pref in ("torchrun", "single"):
+        return pref
+    return "torchrun" if s.get("num_gpus", 1) > 1 else "single"
 
-    No subshell means `timeout` can signal the python process directly and free the
-    GPU. PYTHONPATH lets train.py import prepare.py regardless of cwd. CUDA_VISIBLE_
-    DEVICES pins the slot's GPU; taskset + OMP cap it to disjoint CPU cores so the
-    on-CPU tokenizer in concurrent runs doesn't steal this slot's throughput. A
-    persistent TORCHINDUCTOR_CACHE_DIR makes torch.compile reuse artifacts across
-    runs (warm starts → less startup overhead, and a fast bench)."""
-    cps, cores = slot_cores(s, slot)
-    gpu = slot  # slot N -> GPU N
+
+def _launch_cmd(s: dict, script: str) -> str:
+    """Build the remote command that runs ONE experiment (never several in parallel).
+
+    On a multi-GPU box the single experiment is sharded across every GPU with
+    torch.distributed (torchrun / `python -m torch.distributed.run`); on one GPU it's a
+    plain python run. Either way it's ONE model/experiment. All N GPUs are exposed
+    (CUDA_VISIBLE_DEVICES=0..N-1) and AR_NUM_GPUS tells the experiment how many it has;
+    torchrun also sets the standard RANK / WORLD_SIZE / LOCAL_RANK. PYTHONPATH lets train.py
+    import prepare.py regardless of cwd; a persistent TORCHINDUCTOR_CACHE_DIR makes
+    torch.compile reuse artifacts across runs (warm starts after the first)."""
     py = s.get("remote_py", DEFAULT_REMOTE_PY)  # template torch by default; uv .venv fallback
-    cache = f"TORCHINDUCTOR_CACHE_DIR={cache_dir} " if cache_dir else ""
+    n = s.get("num_gpus", 1)
     budget = s.get("time_budget_s", 300)  # variable per session; prepare.py reads AR_TIME_BUDGET
-    return (f"taskset -c {cores} env CUDA_VISIBLE_DEVICES={gpu} OMP_NUM_THREADS={cps} "
-            f"OPENBLAS_NUM_THREADS={cps} PYTHONPATH={REMOTE_DIR} AR_TIME_BUDGET={budget} {cache}"
-            f"{py} {script}")
+    devices = ",".join(str(i) for i in range(n))
+    env = (f"env CUDA_VISIBLE_DEVICES={devices} PYTHONPATH={REMOTE_DIR} "
+           f"AR_TIME_BUDGET={budget} AR_NUM_GPUS={n} TORCHINDUCTOR_CACHE_DIR={REMOTE_CACHE}")
+    if _effective_launcher(s) == "torchrun":
+        # `python -m torch.distributed.run` (== torchrun) via the same interpreter, so it
+        # doesn't depend on PATH. --standalone = single-node rendezvous on a free port.
+        return f"{env} {py} -m torch.distributed.run --standalone --nproc_per_node={n} {script}"
+    return f"{env} {py} {script}"
 
 
-def _exp_run(s: dict, slot: int, train: Path) -> dict:
-    """Run ONE experiment on `slot`'s GPU and return its result dict.
-
-    Shared by `exp` (one slot) and `round` (every slot in parallel): push this slot's
-    train.py to the box, run it on the slot's GPU (CPU-pinned), parse + print the result.
-    Thread-safe — each call is its own ssh/scp subprocesses — so `round` can map it across
-    slots concurrently, exactly like `bench`."""
-    workdir = f"{REMOTE_DIR}/slots/slot{slot}"
-    cache = f"{REMOTE_DIR}/.inductor/slot{slot}"  # per-slot compile cache (warm starts)
-    ssh_run(s, f"mkdir -p {workdir} {cache}")
-    scp_to(s, str(train), f"{workdir}/train.py")
-    log = f"{workdir}/run.log"
-    inv = _train_invocation(s, slot, f"{workdir}/train.py", cache)
-    # Reap any GHOST run still holding this slot's GPU, in a SEPARATE ssh call. The reap and
-    # the run must NOT share a shell: pkill -f matches the *whole* command line, so if the
-    # reap ran in the same shell as the train.py invocation it would SIGKILL its own wrapper
-    # shell before python launched. The `[t]rain.py` regex class matches real `train.py`
-    # processes but keeps the literal "train.py" out of pkill's own command line, so it can't
-    # self-match. The run itself is NOT force-killed — train.py self-stops at the budget.
-    ssh_run(s, f'pkill -9 -f "{workdir}/[t]rain.py" 2>/dev/null; sleep 1; true')
+def _exp_run(s: dict, train: Path) -> dict:
+    """Run ONE experiment on the box's GPU and return its result dict: push this train.py,
+    run it, parse + print the objective."""
+    ssh_run(s, f"mkdir -p {REMOTE_RUN} {REMOTE_CACHE}")
+    scp_to(s, str(train), f"{REMOTE_RUN}/train.py")
+    log = f"{REMOTE_RUN}/run.log"
+    inv = _launch_cmd(s, f"{REMOTE_RUN}/train.py")
+    # Reap any GHOST run still holding the GPU, in a SEPARATE ssh call. The reap and the run
+    # must NOT share a shell: pkill -f matches the *whole* command line, so if the reap ran in
+    # the same shell as the train.py invocation it would SIGKILL its own wrapper shell before
+    # python launched. The `[t]rain.py` regex class matches real train.py processes but keeps
+    # the literal "train.py" out of pkill's own command line, so it can't self-match. The run
+    # itself is NOT force-killed — train.py self-stops at the budget.
+    ssh_run(s, f'pkill -9 -f "{REMOTE_RUN}/[t]rain.py" 2>/dev/null; sleep 1; true')
     # Capture EVERY `name: number` summary line (domain-agnostic), then pick the objective.
     remote = (f"{inv} > {log} 2>&1; "
               f"grep -E '^[A-Za-z_][A-Za-z0-9_]*:[ \\t]*-?[0-9.]+[ \\t]*$' {log} || "
               f"(echo '--- CRASH (tail) ---'; tail -n 40 {log})")
-    print(f"[slot{slot}/gpu{slot}] running experiment (cores {slot_cores(s, slot)[1]})…",
-          flush=True)
+    n = s.get("num_gpus", 1)
+    how = f"{n} GPUs via {_effective_launcher(s)}" if n > 1 else "1 GPU"
+    print(f"running experiment ({how})…", flush=True)
     t0 = time.time()
     r = ssh_run(s, remote)
     dt = time.time() - t0
@@ -505,190 +496,51 @@ def _exp_run(s: dict, slot: int, train: Path) -> dict:
     primary = s.get("metric", PRIMARY_METRIC_DEFAULT)
     oom = "out of memory" in r.stdout.lower() or "outofmemory" in r.stdout.lower()
     if primary in m:
-        result = {"slot": slot, "ok": True, "metric": primary, "score": m[primary],
+        result = {"ok": True, "metric": primary, "score": m[primary],
                   "wall_seconds": round(dt, 1), **m}
         extra = f"  vram={m['peak_vram_mb']/1024:.1f}GB" if "peak_vram_mb" in m else ""
-        print(f"[slot{slot}] {primary}={m[primary]:.6f}{extra}  wall={dt:.0f}s")
+        print(f"{primary}={m[primary]:.6f}{extra}  wall={dt:.0f}s")
     else:
         reason = "OOM" if oom else "CRASH"
-        result = {"slot": slot, "ok": False, "reason": reason, "wall_seconds": round(dt, 1)}
+        result = {"ok": False, "reason": reason, "wall_seconds": round(dt, 1)}
         hint = "  (out of memory — shrink the run; treat as discard)" if oom else ""
-        print(f"[slot{slot}] {reason} / no '{primary}'{hint}. tail:\n{r.stdout[-1500:]}")
+        print(f"{reason} / no '{primary}'{hint}. tail:\n{r.stdout[-1500:]}")
     return result
 
 
 def cmd_exp(a) -> None:
-    """Run ONE experiment on one slot and report val_bpb / peak_vram. Used for the
-    baseline run and one-off re-tests; the orchestrator runs whole rounds with `round`."""
+    """Run ONE experiment and report the objective / peak_vram. This is the unit of the
+    ratchet loop: the agent edits train.py, runs `exp`, and keeps or resets on the score."""
     s = require_state()
     if not s.get("ready"):
         print("WARN: box not marked ready; run `vast.py setup` first.", file=sys.stderr)
     if a.minutes:  # per-run budget override (default: the session's time_budget_s)
         s = {**s, "time_budget_s": int(a.minutes * 60)}
-    slot = a.slot
-    if slot >= s["num_gpus"]:
-        sys.exit(f"slot {slot} out of range (box has {s['num_gpus']} GPUs)")
+    if a.launcher:  # per-run launcher override (default: the session's)
+        s = {**s, "launcher": a.launcher}
     train = Path(a.train)
     if not train.exists():
         sys.exit(f"train file not found: {train}")
-    result = _exp_run(s, slot, train)
+    result = _exp_run(s, train)
     print("RESULT_JSON:" + json.dumps(result))
     sys.exit(0 if result["ok"] else 1)
 
 
-def cmd_round(a) -> None:
-    """Run a WHOLE round: every slot's train.py at once, in PARALLEL across the GPUs,
-    in ONE blocking call — then print all results. This is how the ORCHESTRATOR runs the
-    round itself (no per-experiment subagents): reset slots, edit each worktree's train.py,
-    commit, then call `round` once. Faithful parallelism: same GPU/CPU pinning as `exp`,
-    one thread per slot (like `bench`). Blocks until the slowest slot finishes."""
-    s = require_state()
-    if not s.get("ready"):
-        print("WARN: box not marked ready; run `vast.py setup` first.", file=sys.stderr)
-    if a.minutes:  # per-round budget override (default: the session's time_budget_s)
-        s = {**s, "time_budget_s": int(a.minutes * 60)}
-    G = s["num_gpus"]
-    slots = [int(x) for x in a.slots.split(",")] if a.slots else list(range(G))
-    overrides = {}
-    for spec in (a.train or []):  # --train SLOT=PATH (repeatable); default worktrees/slotN/train.py
-        k, _, v = spec.partition("=")
-        overrides[int(k)] = v
-    plan: dict[int, Path] = {}
-    for slot in slots:
-        if slot >= G:
-            sys.exit(f"slot {slot} out of range (box has {G} GPUs)")
-        train = Path(overrides.get(slot, f"worktrees/slot{slot}/train.py"))
-        if not train.exists():
-            sys.exit(f"train file not found for slot {slot}: {train}")
-        plan[slot] = train
-    budget_min = s.get("time_budget_s", 300) // 60
-    print(f"round: {len(plan)} experiments in parallel on slots {sorted(plan)} "
-          f"({budget_min} min each)…", flush=True)
-    items = list(plan.items())
-
-    def _safe(kv):
-        slot, train = kv
-        try:  # one slot's failure (e.g. a transient scp/ssh error) must not sink the round
-            return _exp_run(s, slot, train)
-        except Exception as e:  # noqa: BLE001 — report it as a failed slot, keep the others
-            print(f"[slot{slot}] ERROR: {e}")
-            return {"slot": slot, "ok": False, "reason": f"ERROR: {e}", "wall_seconds": 0.0}
-
-    t0 = time.time()
-    with ThreadPoolExecutor(max_workers=len(items)) as ex:
-        out = list(ex.map(_safe, items))
-    results = {slot: res for (slot, _), res in zip(items, out)}
-    dt = time.time() - t0
-    print(f"\n=== round done in {dt:.0f}s ===")
-    for slot in sorted(results):
-        res = results[slot]
-        if res["ok"]:
-            vram = f"  vram={res['peak_vram_mb']/1024:.1f}GB" if "peak_vram_mb" in res else ""
-            print(f"  slot{slot}: {res['metric']}={res['score']:.6f}{vram}")
-        else:
-            print(f"  slot{slot}: {res.get('reason', 'FAIL')}")
-        print("RESULT_JSON:" + json.dumps(res))
-    print("ROUND_JSON:" + json.dumps({"wall_seconds": round(dt, 1),
-                                      "slots": {str(k): v for k, v in results.items()}}))
-    sys.exit(0 if all(r["ok"] for r in results.values()) else 1)
-
-
-# --- bench (objectivity) -------------------------------------------------------
-
-def _tokps_series(text: str) -> list[int]:
-    return [int(x.replace(",", "")) for x in re.findall(r"tok/sec:\s*([\d,]+)", text)]
-
-
-def _steady_tokps(text: str) -> float | None:
-    """Median tok/sec over the back half of the run (drops compile/warmup ramp)."""
-    s = _tokps_series(text)
-    if len(s) < 4:
-        return float(statistics.median(s)) if s else None
-    return float(statistics.median(s[len(s) // 2:]))
-
-
-BENCH_CACHE = f"{REMOTE_DIR}/.inductor/bench"  # shared so phase B starts warm
-
-
-def _bench_one(s: dict, slot: int, seconds: int) -> float | None:
-    # Run the BASELINE train.py (already synced to REMOTE_DIR) for `seconds`, then
-    # kill it and read the streamed tok/sec. Faithful: real model + real dataloader.
-    # `timeout -k` exec-signals the python directly so the GPU is freed promptly.
-    cmd = (f"mkdir -p {BENCH_CACHE}; timeout -k 10 -s TERM {seconds} "
-           + _train_invocation(s, slot, f"{REMOTE_DIR}/train.py", BENCH_CACHE))
-    return _steady_tokps(ssh_run(s, cmd).stdout)
-
-
-def cmd_bench(a) -> None:
-    """~1 minute objectivity check. Phase A warms the shared compile cache on GPU 0
-    (and gives the solo throughput); Phase B then measures all GPUs at once with a
-    warm cache, so a short window is enough. GPU equivalence = spread across the
-    concurrent readings; contention = solo vs concurrent."""
-    s = require_state()
-    if not s.get("ready"):
-        sys.exit("run `vast.py setup` first")
-    G = s["num_gpus"]
-    warm = a.seconds + 25  # cold run: pay torch.compile once + leave a steady window
-    print(f"bench (~1 min): GPU0 solo+warmup ({warm}s), then {G} GPUs concurrent ({a.seconds}s).")
-
-    print("— solo / warm-up (gpu0) —")
-    solo = _bench_one(s, 0, warm)
-    print(f"  gpu0: {solo:,.0f} tok/sec" if solo else "  gpu0: no reading")
-
-    # Seed every slot's per-slot compile cache from the now-warm bench cache, so the FIRST
-    # experiment on each slot (the baseline / first round) skips torch.compile (~30-60s).
-    ssh_run(s, "; ".join(
-        f"mkdir -p {REMOTE_DIR}/.inductor/slot{i}; "
-        f"cp -rn {BENCH_CACHE}/. {REMOTE_DIR}/.inductor/slot{i}/ 2>/dev/null"
-        for i in range(G)))
-    print(f"  seeded {G} per-slot compile caches (warm first experiments).")
-
-    report = {"seconds": a.seconds, "solo_gpu0": solo}
-    if G == 1:
-        report["note"] = "single-GPU box: no parallelism, nothing to contend"
-        (REPO / "bench.json").write_text(json.dumps(report, indent=2))
-        print("\nsingle-GPU box — comparisons are trivially objective. saved bench.json.")
-        return
-
-    print(f"— concurrent (all {G} GPUs at once, warm cache) —")
-    with ThreadPoolExecutor(max_workers=G) as ex:
-        conc = dict(zip(range(G), ex.map(lambda i: _bench_one(s, i, a.seconds), range(G))))
-    for i in range(G):
-        print(f"  gpu{i}: {conc[i]:,.0f} tok/sec" if conc[i] else f"  gpu{i}: no reading")
-
-    cv = [v for v in conc.values() if v]
-    report["concurrent"] = conc
-    if cv:
-        spread = (max(cv) - min(cv)) / statistics.median(cv) * 100
-        report["gpu_spread_pct"] = round(spread, 1)
-        verdict = "EQUIVALENT" if spread <= 5 else "UNEVEN — treat cross-GPU results with care"
-        print(f"\nGPU spread (under load): {spread:.1f}%  -> {verdict}")
-    if solo and cv:
-        tax = (1 - statistics.median(cv) / solo) * 100
-        report["contention_tax_pct"] = round(tax, 1)
-        if tax <= 5:
-            note = "negligible — full parallel is objective"
-        elif tax <= 15:
-            note = "modest — fine, but compare experiments run at the SAME parallelism"
-        else:
-            note = "HIGH — consider fewer parallel slots for clean comparisons"
-        print(f"Concurrency tax ({G}-up vs solo): {tax:.1f}%  -> {note}")
-    (REPO / "bench.json").write_text(json.dumps(report, indent=2))
-    print("\nsaved bench.json (read this before trusting cross-run comparisons).")
-
-
 # --- dashboard (local live visualization) --------------------------------------
 
+RESULT_COLS = ("commit", "score", "memory_gb", "status", "description")
+
+
 def _read_results() -> list[dict]:
-    """Parse results.tsv (the shared ledger every slot appends to via `vast.py log`)."""
+    """Parse results.tsv (the ledger the agent appends to via `vast.py log`)."""
     if not RESULTS.exists():
         return []
     rows = []
     for line in RESULTS.read_text().splitlines():
         if not line.strip() or line.startswith("commit\t"):
             continue
-        p = (line.split("\t") + [""] * 6)[:6]
-        rows.append(dict(zip(("commit", "score", "memory_gb", "status", "branch", "description"), p)))
+        p = (line.split("\t") + [""] * len(RESULT_COLS))[:len(RESULT_COLS)]
+        rows.append(dict(zip(RESULT_COLS, p)))
     return rows
 
 
@@ -754,7 +606,7 @@ def _box_panel(s: dict | None) -> str:
     frac = max(0.0, min(1.0, up_h / total_h)) if total_h else 0
     cost = up_h * s["dph"]
     chips = [
-        f'<b>{s["num_gpus"]}× {html.escape(str(s["gpu"]))}</b>',
+        f'<b>{s.get("num_gpus", 1)}× {html.escape(str(s["gpu"]))}</b>',
         f'${s["dph"]:.3f}/hr',
         f'up {up_h:.2f}h',
         f'spent ${cost:.2f}',
@@ -823,8 +675,8 @@ def _render_page() -> str:
     goal = state.get("goal", "min")
     valid_keeps = [r for r in rows if r["status"] == "keep" and _fval(r.get("score")) is not None]
     keeps = sorted(valid_keeps, key=lambda r: _fval(r["score"]), reverse=(goal == "max"))
-    cols = [(metric, "score"), ("slot", "branch"), ("mem", "memory_gb"),
-            ("commit", "commit"), ("description", "description")]
+    cols = [(metric, "score"), ("mem", "memory_gb"), ("commit", "commit"),
+            ("description", "description")]
     findings = (REPO / "findings.md").read_text()[-4000:] if (REPO / "findings.md").exists() else "(no findings.md yet)"
     return PAGE.safe_substitute(
         box=_box_panel(load_state()),
@@ -833,8 +685,7 @@ def _render_page() -> str:
         metrictitle=f"{html.escape(metric)} over experiments ({'lower' if goal == 'min' else 'higher'} = better)",
         leaderboard=_table(keeps[:10], cols) or "<p class=muted>none yet</p>",
         recent=_table(list(reversed(rows))[:14],
-                      [(metric, "score"), ("status", "status"), ("slot", "branch"),
-                       ("description", "description")]),
+                      [(metric, "score"), ("status", "status"), ("description", "description")]),
         findings=html.escape(findings),
     )
 
@@ -871,18 +722,13 @@ def cmd_dashboard(a) -> None:
 # --- misc commands -------------------------------------------------------------
 
 def cmd_reap(a) -> None:
-    """Kill stray train.py runs on the box (ghost runs from died/abandoned subagents)
-    and show what's still on the GPUs. Run between rounds, or with --slot to clear one."""
+    """Kill a stray train.py run on the box (a ghost from a wedged/abandoned run) and show
+    what's still on the GPU. Use it if a run got stuck and is holding VRAM."""
     s = require_state()
-    # `[t]rain.py` matches real train.py processes but keeps the literal "train.py" out of
-    # pkill's own command line, so it never SIGKILLs its own wrapper shell (see cmd_exp).
-    if a.slot is not None:
-        ssh_run(s, f'pkill -9 -f "{REMOTE_DIR}/slots/slot{a.slot}/[t]rain.py" 2>/dev/null; true')
-        print(f"reaped any run on slot{a.slot}")
-    else:
-        ssh_run(s, f'pkill -9 -f "{REMOTE_DIR}/slots/.*[t]rain\\.py" 2>/dev/null; '
-                   f'pkill -9 -f "{REMOTE_DIR}/[t]rain.py" 2>/dev/null; true')
-        print("reaped all stray train.py runs")
+    # `[t]rain.py` matches the real train.py process but keeps the literal "train.py" out of
+    # pkill's own command line, so it never SIGKILLs its own wrapper shell (see _exp_run).
+    ssh_run(s, f'pkill -9 -f "{REMOTE_RUN}/[t]rain.py" 2>/dev/null; true')
+    print("reaped any stray train.py run")
     out = ssh_run(s, "nvidia-smi --query-compute-apps=gpu_uuid,pid,used_memory "
                      "--format=csv,noheader 2>/dev/null").stdout.strip()
     print("GPU compute processes now:\n  " + (out.replace("\n", "\n  ") if out else "(none)"))
@@ -900,13 +746,12 @@ def cmd_pull(a) -> None:
 
 
 def cmd_log(a) -> None:
-    """Atomically append one tab-separated row to results.tsv (file-locked, so even
-    concurrent writes never interleave/corrupt the ledger). The orchestrator logs one
-    row per experiment after a round."""
+    """Atomically append one tab-separated row to results.tsv (file-locked). The agent logs
+    one row per experiment: commit  score  memory_gb  status  description."""
     import fcntl
     row = "\t".join(a.fields)
     if not RESULTS.exists():
-        RESULTS.write_text("commit\tscore\tmemory_gb\tstatus\tbranch\tdescription\n")
+        RESULTS.write_text("\t".join(RESULT_COLS) + "\n")
     with open(RESULTS, "a") as f:
         fcntl.flock(f, fcntl.LOCK_EX)
         f.write(row + "\n")
@@ -982,7 +827,9 @@ def main() -> None:
 
     def add_rent_args(p, full):
         p.add_argument("--gpu", default=DEFAULT_GPU)
-        p.add_argument("--gpus", type=int, default=4, help="GPUs on the box = max parallel slots")
+        p.add_argument("--gpus", type=int, default=1,
+                       help="GPUs on the box; ONE experiment is sharded across them with "
+                            "torch.distributed (NOT parallel experiments). Default 1.")
         p.add_argument("--max-price", type=float, default=0.60, help="cap in $/GPU/hr")
         if full:
             p.add_argument("--hours", type=float, default=3.0, help="session length (auto-destroy)")
@@ -992,46 +839,37 @@ def main() -> None:
                            help="objective name the experiment prints (default: val_bpb)")
             p.add_argument("--goal", choices=("min", "max"), default="min",
                            help="optimize the metric to min (default) or max")
+            p.add_argument("--launcher", choices=("auto", "torchrun", "single"), default="auto",
+                           help="how to launch the one experiment: auto (torchrun iff >1 GPU), "
+                                "torchrun (force torch.distributed), or single (one process)")
             p.add_argument("--disk", type=int, default=80)
             p.add_argument("--image", default=None, help="raw docker image (default: Vast PyTorch template)")
             p.add_argument("--offer-id", type=int, default=None, help="rent this exact offer id")
 
     add_rent_args(add("search", cmd_search), full=False)
     add_rent_args(add("up", cmd_up), full=True)
-    stp = add("start", cmd_start)  # one-shot: up + watchdog + setup + bench
+    stp = add("start", cmd_start)  # one-shot: up + watchdog + setup
     add_rent_args(stp, full=True)
     stp.add_argument("--num-shards", type=int, default=8)
-    stp.add_argument("--seconds", type=int, default=15, help="bench window per phase")
 
     add("status", cmd_status)
     add("sync", cmd_sync)
     sp = add("setup", cmd_setup)
     sp.add_argument("--num-shards", type=int, default=8, help="train shards to download")
-    bp = add("bench", cmd_bench)
-    bp.add_argument("--seconds", type=int, default=15,
-                    help="warm measurement window per phase (total bench ~1 min)")
     ep = add("exp", cmd_exp)
-    ep.add_argument("--slot", type=int, required=True)
-    ep.add_argument("--train", required=True, help="path to the train.py to run")
+    ep.add_argument("--train", default="train.py", help="path to the train.py to run")
     ep.add_argument("--minutes", type=float, default=None,
                     help="override this run's training budget (default: the session's)")
-    rdp = add("round", cmd_round)
-    rdp.add_argument("--slots", default=None,
-                     help="comma list of slots to run (default: all GPUs)")
-    rdp.add_argument("--train", action="append", default=None,
-                     help="override a slot's train path as SLOT=PATH "
-                          "(default worktrees/slotN/train.py); repeatable")
-    rdp.add_argument("--minutes", type=float, default=None,
-                     help="override this round's per-experiment budget (default: the session's)")
-    rpz = add("reap", cmd_reap)
-    rpz.add_argument("--slot", type=int, default=None, help="only this slot (default: all)")
+    ep.add_argument("--launcher", choices=("auto", "torchrun", "single"), default=None,
+                    help="override this run's launcher (default: the session's)")
+    add("reap", cmd_reap)
     rp = add("run", cmd_run)
     rp.add_argument("command")
     pp = add("pull", cmd_pull)
     pp.add_argument("remote")
     pp.add_argument("local")
     lp = add("log", cmd_log)
-    lp.add_argument("fields", nargs="+", help="commit val_bpb memory_gb status branch description")
+    lp.add_argument("fields", nargs="+", help="commit score memory_gb status description")
     dp = add("dashboard", cmd_dashboard)
     dp.add_argument("--port", type=int, default=8723)
     dp.add_argument("--no-open", action="store_true", help="don't auto-open a browser")

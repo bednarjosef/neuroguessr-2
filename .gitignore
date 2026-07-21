@@ -8,9 +8,6 @@ wheels/
 
 # Virtual environments
 .venv
-worktrees/
-results/
-queue/
 
 # Agent prompt files (generated per-session by launchers)
 # NOTE: CLAUDE.md is tracked in this fork — it's the session-start onboarding router.
@@ -24,5 +21,4 @@ results.tsv
 
 # Vast session state (per-session; never commit)
 .vast_state*.json
-bench.json
 findings.md
