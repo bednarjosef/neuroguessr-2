@@ -213,13 +213,16 @@ class GeoModel(nn.Module):
         return self.head(self.features(pixel_values).float())
 
     @torch.no_grad()
-    def predict_latlon(self, pixel_values, topk=PRED_TOPK):
+    def predict_latlon(self, pixel_values, topk=PRED_TOPK, collect=None):
         """Mode-seeking: temperature-sharpened weights over top-k cells, restricted to the
-        neighborhood of the top-1 cell, then prob-weighted spherical mean."""
+        neighborhood of the top-1 cell, then prob-weighted spherical mean.
+        collect: optional list; appends this batch's top-5 cell ids (diagnostics only)."""
         logits = self.logits(pixel_values)
         probs = F.softmax(logits.float() / PRED_TEMP, dim=-1)
         k = min(topk, probs.size(-1))
         w, idx = probs.topk(k, dim=-1)                     # (B, k)
+        if collect is not None:
+            collect.append(idx[:, :5].cpu())
         # keep only cells near the argmax cell (kills cross-continent averaging)
         d_top1 = haversine_km_t(self.cell_lat[idx[:, :1]], self.cell_lon[idx[:, :1]],
                                 self.cell_lat[idx], self.cell_lon[idx])   # (B, k)
@@ -267,7 +270,7 @@ train_loader = DataLoader(train_ds, batch_size=DEVICE_BATCH_SIZE, shuffle=True,
                           pin_memory=True, persistent_workers=True, prefetch_factor=4)
 
 
-def make_predict_fn():
+def make_predict_fn(collect=None):
     """Closure passed to the frozen evaluator: PIL images -> (lat, lon) arrays."""
     from PIL import Image
     model.eval()
@@ -277,20 +280,48 @@ def make_predict_fn():
                         for im in pil_images])
         x = torch.from_numpy(arr).permute(0, 3, 1, 2)
         with torch.no_grad(), autocast_ctx:
-            lat, lon = model.predict_latlon(normalize_batch(x))
+            lat, lon = model.predict_latlon(normalize_batch(x), collect=collect)
         return lat.float().cpu().numpy(), lon.float().cpu().numpy()
     return predict_fn
 
 
+# True (nearest-centroid) cell of every val row, in evaluate_geo's row order — lets the eval
+# pass double as a cell-classification probe at zero extra GPU cost.
+_, _val_df = load_index("val")
+with torch.no_grad():
+    _vlat = torch.tensor(_val_df["latitude"].to_numpy(), dtype=torch.float32, device=device)
+    _vlon = torch.tensor(_val_df["longitude"].to_numpy(), dtype=torch.float32, device=device)
+    _d = haversine_km_t(_vlat.unsqueeze(1), _vlon.unsqueeze(1),
+                        cell_lat.unsqueeze(0), cell_lon.unsqueeze(0))
+    VAL_TRUE_CELLS = _d.argmin(dim=1).cpu()               # (N_val,)
+    del _d
+
+
+def val_cell_metrics(collected):
+    """Top-1/5 cell accuracy + chance-normalized lift from collected top-5 ids."""
+    if not collected:
+        return {}
+    top5 = torch.cat(collected)                            # (n, 5), eval row order
+    true = VAL_TRUE_CELLS[:top5.size(0)]
+    top1 = (top5[:, 0] == true).float().mean().item()
+    top5a = (top5 == true.unsqueeze(1)).any(dim=1).float().mean().item()
+    return {"cell_top1": top1, "cell_top5": top5a,
+            "cell_top1_lift": top1 * N_CELLS, "cell_top5_lift": top5a * N_CELLS / 5}
+
+
 def quick_eval(tag, step):
-    pf = make_predict_fn()
+    coll = []
+    pf = make_predict_fn(collect=coll)
     m = evaluate_geo(pf, split="val", subset=QUICK_VAL_N, batch_size=DEVICE_BATCH_SIZE)
+    cm = val_cell_metrics(coll)
     model.train()
     print(f"\n[{tag}] median_km={m['median_km']:.1f} mean_km={m['mean_km']:.1f} "
           f"acc@25km={m['acc_25km']*100:.1f}% acc@200km={m['acc_200km']*100:.1f}% "
-          f"acc@2500km={m['acc_2500km']*100:.1f}% geoguessr={m['geoguessr_score']:.0f}", flush=True)
+          f"acc@2500km={m['acc_2500km']*100:.1f}% geoguessr={m['geoguessr_score']:.0f} "
+          f"cell_top1={cm.get('cell_top1', 0)*100:.1f}% (lift {cm.get('cell_top1_lift', 0):.0f}x)",
+          flush=True)
     if wandb_run is not None:
-        wandb.log({f"val/{k}": v for k, v in m.items()}, step=step)
+        wandb.log({f"val/{k}": v for k, v in {**m, **cm}.items()}, step=step)
     return m
 
 # ---------------------------------------------------------------------------
@@ -409,9 +440,11 @@ print()
 # ---------------------------------------------------------------------------
 
 model.eval()
-predict_fn = make_predict_fn()
+final_coll = []
+predict_fn = make_predict_fn(collect=final_coll)
 with autocast_ctx:
     m = evaluate_geo(predict_fn, split="val", subset=None, batch_size=DEVICE_BATCH_SIZE)
+final_cm = val_cell_metrics(final_coll)
 
 peak_vram_mb = torch.cuda.max_memory_allocated() / 1024 / 1024
 t_end = time.time()
@@ -430,9 +463,11 @@ print(f"training_seconds: {total_training_time:.1f}")
 print(f"total_seconds:    {t_end - t_start:.1f}")
 print(f"num_steps:        {step}")
 print(f"num_params_M:     {n_train_params/1e6:.2f}")
+for k, v in final_cm.items():
+    print(f"{k}: {v:.6f}")
 
 if wandb_run is not None:
-    wandb.log({f"final/{k}": v for k, v in m.items()}, step=step)
-    wandb.summary.update({f"final_{k}": v for k, v in m.items()})
+    wandb.log({f"final/{k}": v for k, v in {**m, **final_cm}.items()}, step=step)
+    wandb.summary.update({f"final_{k}": v for k, v in {**m, **final_cm}.items()})
     wandb.summary.update({"num_steps": step, "peak_vram_mb": peak_vram_mb})
     wandb.finish()
