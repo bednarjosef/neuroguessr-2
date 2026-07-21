@@ -18,7 +18,10 @@
 | 0 | baseline (fixed LoRA targets) | 535.4 | KEEP (champion seed) |
 | 1 | no-ckpt + 32 workers @ bs48 | OOM | crash (activations >32GB at bs48) |
 | 1b | no-ckpt, bs24x2, 32 workers | 433.3 | **KEEP** (−19%, +47% steps) |
-| 2 | geocells 512→2048, topk 16 | running | |
+| 2 | geocells 512→2048, topk 16 | 398.5 | **KEEP** (−8%) |
+| 3 | cls_mean pooling | 395.5 | discard (within ±3–5km noise) |
+| 4 | per-cell offset regression head | 395.7 | discard (within noise → within-cell res NOT the bottleneck; cell selection is) |
+| 5 | mode-seeking pred rule (T=0.5 + 1000km locality) | running | |
 
 ## Banked
 

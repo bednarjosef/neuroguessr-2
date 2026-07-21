@@ -42,6 +42,8 @@ N_CELLS = 2048
 KMEANS_ITERS = 25
 SMOOTH_TAU_KM = 75.0
 PRED_TOPK = 16
+PRED_TEMP = 0.5                # sharpen posterior before the spherical mean (mode-seeking)
+PRED_RADIUS_KM = 1000.0        # only average cells within this radius of the top-1 cell
 HEAD_HIDDEN = 1024
 HEAD_DROPOUT = 0.1
 POOL = "cls"                   # "cls" | "mean" | "cls_mean"
@@ -212,12 +214,17 @@ class GeoModel(nn.Module):
 
     @torch.no_grad()
     def predict_latlon(self, pixel_values, topk=PRED_TOPK):
-        """Prob-weighted spherical mean over the top-k cells -> (lat, lon) degrees."""
+        """Mode-seeking: temperature-sharpened weights over top-k cells, restricted to the
+        neighborhood of the top-1 cell, then prob-weighted spherical mean."""
         logits = self.logits(pixel_values)
-        probs = F.softmax(logits, dim=-1)
+        probs = F.softmax(logits.float() / PRED_TEMP, dim=-1)
         k = min(topk, probs.size(-1))
         w, idx = probs.topk(k, dim=-1)                     # (B, k)
-        w = w / w.sum(dim=-1, keepdim=True)
+        # keep only cells near the argmax cell (kills cross-continent averaging)
+        d_top1 = haversine_km_t(self.cell_lat[idx[:, :1]], self.cell_lon[idx[:, :1]],
+                                self.cell_lat[idx], self.cell_lon[idx])   # (B, k)
+        w = w * (d_top1 <= PRED_RADIUS_KM)
+        w = w / w.sum(dim=-1, keepdim=True).clamp(min=1e-9)
         cents = self.centroids[idx]                        # (B, k, 3)
         v = (w.unsqueeze(-1) * cents).sum(dim=1)           # (B, 3)
         return unit_to_latlon(v)
