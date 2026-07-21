@@ -1,12 +1,26 @@
 """
-One-time data preparation for autoresearch experiments.
-Downloads data shards and trains a BPE tokenizer.
+One-time data preparation + FROZEN evaluator for autoresearch (image geolocalization).
+
+Downloads a FIXED, seed-pinned subset of the streetview dataset once and caches it to
+local JPEGs + a metadata parquet, so every experiment trains/evaluates on exactly the
+same images (comparable scores, no re-downloading 1.2M rows). Also defines the frozen,
+un-gameable objective: the great-circle (haversine) error between the model's predicted
+lat/lon and the ground truth on the held-out val split.
 
 Usage:
-    python prepare.py                  # full prep (download + tokenizer)
-    python prepare.py --num-shards 8   # download only 8 shards (for testing)
+    python prepare.py                 # full prep (download subset + val)
+    python prepare.py --num-shards 8  # arg accepted for vast.py compatibility (ignored)
 
-Data and tokenizer are stored in ~/.cache/autoresearch/.
+Everything is cached under ~/.cache/autoresearch_geo/.
+
+CONTRACT (frozen during research — agents edit train.py only):
+    - The train subset (which images) and the val split are fixed here.
+    - `evaluate_geo(predict_fn, ...)` computes the objective. `predict_fn` takes a list of
+      PIL images and returns (lat_array, lon_array) in degrees. The model ONLY ever emits
+      coordinates; the scoring (haversine + metrics) lives here and cannot be gamed from
+      train.py.
+    - `median_km` (lower is better) is the primary objective. mean_km, acc@{1,25,200,750,
+      2500}km and the GeoGuessr game score are computed too, as diagnostics.
 """
 
 import os
@@ -15,379 +29,253 @@ import time
 import math
 import signal
 import argparse
-import pickle
-from multiprocessing import Pool
 
-import requests
-import pyarrow.parquet as pq
-import rustbpe
-import tiktoken
-import torch
+import numpy as np
 
 # ---------------------------------------------------------------------------
-# Constants (fixed, do not modify)
+# Constants (fixed, do not modify during research)
 # ---------------------------------------------------------------------------
 
-MAX_SEQ_LEN = 2048       # context length
-# Training time budget in seconds. Default 5 min; the human sets it per session via
-# `vast.py` (AR_TIME_BUDGET), so it's variable across sessions but fixed within one (it
-# must be constant for runs to stay comparable). Agents do not edit prepare.py.
-TIME_BUDGET = int(os.environ.get("AR_TIME_BUDGET", "300"))
-EVAL_TOKENS = 40 * 524288  # number of tokens for val eval
+# Per-experiment training time budget in seconds. Default 8 min; the human sets it per
+# session via vast.py (AR_TIME_BUDGET). Constant within a session so runs stay comparable.
+TIME_BUDGET = int(os.environ.get("AR_TIME_BUDGET", "480"))
+
+# The frozen, seed-pinned data subset. Fixed so every experiment sees the SAME images.
+DATASET_NAME = os.environ.get("AR_DATASET", "josefbednar/streetview-acw-300k")
+N_TRAIN = int(os.environ.get("AR_N_TRAIN", "60000"))   # cached training pool (fixed subset)
+N_VAL = int(os.environ.get("AR_N_VAL", "3000"))        # full held-out val split
+DATA_SEED = 1337                                        # frozen sampling seed
+SAVE_MAX_SIDE = 512                                     # cap stored JPEG long side (disk/speed)
+# Fixed subset of val used for the fast every-N-steps monitoring eval during training.
+# The FINAL official score always uses the full val split.
+QUICK_VAL_N = int(os.environ.get("AR_QUICK_VAL_N", "1000"))
+
+# Earth radius (km) for the great-circle distance.
+EARTH_RADIUS_KM = 6371.0088
+# GeoGuessr score constant: 5000 * exp(-distance_km / 1492.7).
+GEOGUESSR_TAU_KM = 1492.7
+# Accuracy thresholds (km): street / city / region / country / continent.
+ACC_THRESHOLDS_KM = [1.0, 25.0, 200.0, 750.0, 2500.0]
+
+CACHE_DIR = os.path.join(os.path.expanduser("~"), ".cache", "autoresearch_geo")
+TRAIN_IMG_DIR = os.path.join(CACHE_DIR, "train")
+VAL_IMG_DIR = os.path.join(CACHE_DIR, "val")
+TRAIN_META = os.path.join(CACHE_DIR, "train.parquet")
+VAL_META = os.path.join(CACHE_DIR, "val.parquet")
+
+# Metadata columns we keep if present (image + coords are required; rest are optional
+# side-information train.py may exploit).
+META_COLS = ["latitude", "longitude", "country_code", "subdivision", "date",
+             "elevation", "season", "heading", "panoid", "image_id"]
 
 # ---------------------------------------------------------------------------
-# Configuration
+# Great-circle distance + metrics (FROZEN — this is the objective)
 # ---------------------------------------------------------------------------
 
-CACHE_DIR = os.path.join(os.path.expanduser("~"), ".cache", "autoresearch")
-DATA_DIR = os.path.join(CACHE_DIR, "data")
-TOKENIZER_DIR = os.path.join(CACHE_DIR, "tokenizer")
-BASE_URL = "https://huggingface.co/datasets/karpathy/climbmix-400b-shuffle/resolve/main"
-MAX_SHARD = 6542 # the last datashard is shard_06542.parquet
-VAL_SHARD = MAX_SHARD  # pinned validation shard (shard_06542)
-VAL_FILENAME = f"shard_{VAL_SHARD:05d}.parquet"
-VOCAB_SIZE = 8192
+def haversine_km(lat1, lon1, lat2, lon2):
+    """Vectorized great-circle distance in km. Inputs in degrees (numpy arrays or scalars)."""
+    lat1, lon1, lat2, lon2 = map(np.radians, (np.asarray(lat1, dtype=np.float64),
+                                              np.asarray(lon1, dtype=np.float64),
+                                              np.asarray(lat2, dtype=np.float64),
+                                              np.asarray(lon2, dtype=np.float64)))
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+    a = np.sin(dlat / 2) ** 2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon / 2) ** 2
+    return 2 * EARTH_RADIUS_KM * np.arcsin(np.sqrt(np.clip(a, 0.0, 1.0)))
 
-# BPE split pattern (GPT-4 style, with \p{N}{1,2} instead of {1,3})
-SPLIT_PATTERN = r"""'(?i:[sdmt]|ll|ve|re)|[^\r\n\p{L}\p{N}]?+\p{L}+|\p{N}{1,2}| ?[^\s\p{L}\p{N}]++[\r\n]*|\s*[\r\n]|\s+(?!\S)|\s+"""
 
-SPECIAL_TOKENS = [f"<|reserved_{i}|>" for i in range(4)]
-BOS_TOKEN = "<|reserved_0|>"
+def geo_metrics(pred_lat, pred_lon, true_lat, true_lon):
+    """Compute the full panel of geolocation metrics from predicted vs true coordinates.
+    Returns a dict; `median_km` is the primary objective (lower is better)."""
+    d = haversine_km(pred_lat, pred_lon, true_lat, true_lon)
+    out = {
+        "median_km": float(np.median(d)),
+        "mean_km": float(np.mean(d)),
+        "geoguessr_score": float(np.mean(5000.0 * np.exp(-d / GEOGUESSR_TAU_KM))),
+    }
+    names = {1.0: "acc_1km", 25.0: "acc_25km", 200.0: "acc_200km",
+             750.0: "acc_750km", 2500.0: "acc_2500km"}
+    for thr in ACC_THRESHOLDS_KM:
+        out[names[thr]] = float(np.mean(d <= thr))
+    return out
 
 # ---------------------------------------------------------------------------
-# Data download
+# Data download + caching (one-time; frozen subset)
 # ---------------------------------------------------------------------------
 
-def download_single_shard(index):
-    """Download one parquet shard with retries. Returns True on success."""
-    filename = f"shard_{index:05d}.parquet"
-    filepath = os.path.join(DATA_DIR, filename)
-    if os.path.exists(filepath):
-        return True
+def _resize_for_storage(img):
+    """Downscale so the long side <= SAVE_MAX_SIDE (keeps disk + decode cheap). RGB."""
+    from PIL import Image
+    if img.mode != "RGB":
+        img = img.convert("RGB")
+    w, h = img.size
+    m = max(w, h)
+    if m > SAVE_MAX_SIDE:
+        s = SAVE_MAX_SIDE / m
+        img = img.resize((max(1, round(w * s)), max(1, round(h * s))), Image.BICUBIC)
+    return img
 
-    url = f"{BASE_URL}/{filename}"
-    max_attempts = 5
-    for attempt in range(1, max_attempts + 1):
+
+def _find_split(candidates):
+    """Return the first streaming split that loads, else None."""
+    from datasets import load_dataset
+    for name in candidates:
         try:
-            response = requests.get(url, stream=True, timeout=30)
-            response.raise_for_status()
-            temp_path = filepath + ".tmp"
-            with open(temp_path, "wb") as f:
-                for chunk in response.iter_content(chunk_size=1024 * 1024):
-                    if chunk:
-                        f.write(chunk)
-            os.rename(temp_path, filepath)
-            print(f"  Downloaded {filename}")
-            return True
-        except (requests.RequestException, IOError) as e:
-            print(f"  Attempt {attempt}/{max_attempts} failed for {filename}: {e}")
-            for path in [filepath + ".tmp", filepath]:
-                if os.path.exists(path):
-                    try:
-                        os.remove(path)
-                    except OSError:
-                        pass
-            if attempt < max_attempts:
-                time.sleep(2 ** attempt)
-    return False
+            ds = load_dataset(DATASET_NAME, split=name, streaming=True)
+            _ = next(iter(ds))  # force a real fetch so bad split names raise
+            return name
+        except Exception as e:
+            print(f"  split '{name}' unavailable ({type(e).__name__}); trying next")
+    return None
 
 
-def download_data(num_shards, download_workers=8):
-    """Download training shards + pinned validation shard."""
-    os.makedirs(DATA_DIR, exist_ok=True)
-    num_train = min(num_shards, MAX_SHARD)
-    ids = list(range(num_train))
-    if VAL_SHARD not in ids:
-        ids.append(VAL_SHARD)
+def _download_split(split_name, n, img_dir, meta_path, shuffle):
+    """Stream `n` rows from `split_name`, save JPEGs + a metadata parquet. Idempotent."""
+    import pandas as pd
+    from datasets import load_dataset
 
-    # Count what's already downloaded
-    existing = sum(1 for i in ids if os.path.exists(os.path.join(DATA_DIR, f"shard_{i:05d}.parquet")))
-    if existing == len(ids):
-        print(f"Data: all {len(ids)} shards already downloaded at {DATA_DIR}")
-        return
+    if os.path.exists(meta_path):
+        df = pd.read_parquet(meta_path)
+        if len(df) >= n or len(df) >= QUICK_VAL_N:
+            print(f"  {split_name}: {len(df)} rows already cached at {meta_path}")
+            return
+    os.makedirs(img_dir, exist_ok=True)
 
-    needed = len(ids) - existing
-    print(f"Data: downloading {needed} shards ({existing} already exist)...")
+    from PIL import Image as _PILImage
+    ds = load_dataset(DATASET_NAME, split=split_name, streaming=True)
+    if shuffle:
+        ds = ds.shuffle(seed=DATA_SEED, buffer_size=20000)
 
-    workers = max(1, min(download_workers, needed))
-    with Pool(processes=workers) as pool:
-        results = pool.map(download_single_shard, ids)
+    # Auto-detect the image column (a PIL image value) from the first row.
+    first = next(iter(ds))
+    img_key = next((k for k, v in first.items() if isinstance(v, _PILImage.Image)), None)
+    if img_key is None:
+        img_key = "image"
+    print(f"  {split_name}: image column = '{img_key}'")
 
-    ok = sum(1 for r in results if r)
-    print(f"Data: {ok}/{len(ids)} shards ready at {DATA_DIR}")
-
-# ---------------------------------------------------------------------------
-# Tokenizer training
-# ---------------------------------------------------------------------------
-
-def list_parquet_files():
-    """Return sorted list of parquet file paths in the data directory."""
-    files = sorted(f for f in os.listdir(DATA_DIR) if f.endswith(".parquet") and not f.endswith(".tmp"))
-    return [os.path.join(DATA_DIR, f) for f in files]
-
-
-def text_iterator(max_chars=1_000_000_000, doc_cap=10_000):
-    """Yield documents from training split (all shards except pinned val shard)."""
-    parquet_paths = [p for p in list_parquet_files() if not p.endswith(VAL_FILENAME)]
-    nchars = 0
-    for filepath in parquet_paths:
-        pf = pq.ParquetFile(filepath)
-        for rg_idx in range(pf.num_row_groups):
-            rg = pf.read_row_group(rg_idx)
-            for text in rg.column("text").to_pylist():
-                doc = text[:doc_cap] if len(text) > doc_cap else text
-                nchars += len(doc)
-                yield doc
-                if nchars >= max_chars:
-                    return
-
-
-def train_tokenizer():
-    """Train BPE tokenizer using rustbpe, save as tiktoken pickle."""
-    tokenizer_pkl = os.path.join(TOKENIZER_DIR, "tokenizer.pkl")
-    token_bytes_path = os.path.join(TOKENIZER_DIR, "token_bytes.pt")
-
-    if os.path.exists(tokenizer_pkl) and os.path.exists(token_bytes_path):
-        print(f"Tokenizer: already trained at {TOKENIZER_DIR}")
-        return
-
-    os.makedirs(TOKENIZER_DIR, exist_ok=True)
-
-    parquet_files = list_parquet_files()
-    if len(parquet_files) < 2:
-        print("Tokenizer: need at least 2 data shards (1 train + 1 val). Download more data first.")
-        sys.exit(1)
-
-    # --- Train with rustbpe ---
-    print("Tokenizer: training BPE tokenizer...")
+    rows = []
     t0 = time.time()
+    for i, ex in enumerate(ds):
+        if len(rows) >= n:
+            break
+        try:
+            lat = float(ex["latitude"]); lon = float(ex["longitude"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        img = ex.get(img_key)
+        if img is None:
+            continue
+        fname = f"{len(rows):07d}.jpg"
+        fpath = os.path.join(img_dir, fname)
+        try:
+            _resize_for_storage(img).save(fpath, "JPEG", quality=90)
+        except Exception as e:
+            print(f"  skip image {i}: {e}")
+            continue
+        rec = {"path": fname, "latitude": lat, "longitude": lon}
+        for c in META_COLS:
+            if c in ("latitude", "longitude"):
+                continue
+            if c in ex:
+                rec[c] = ex[c]
+        rows.append(rec)
+        if len(rows) % 2000 == 0:
+            rate = len(rows) / (time.time() - t0 + 1e-9)
+            print(f"  {split_name}: {len(rows)}/{n} ({rate:.0f} img/s)")
 
-    tokenizer = rustbpe.Tokenizer()
-    vocab_size_no_special = VOCAB_SIZE - len(SPECIAL_TOKENS)
-    tokenizer.train_from_iterator(text_iterator(), vocab_size_no_special, pattern=SPLIT_PATTERN)
+    df = pd.DataFrame(rows)
+    df.to_parquet(meta_path, index=False)
+    print(f"  {split_name}: cached {len(df)} rows -> {meta_path}  ({time.time()-t0:.0f}s)")
 
-    # Build tiktoken encoding from trained merges
-    pattern = tokenizer.get_pattern()
-    mergeable_ranks = {bytes(k): v for k, v in tokenizer.get_mergeable_ranks()}
-    tokens_offset = len(mergeable_ranks)
-    special_tokens = {name: tokens_offset + i for i, name in enumerate(SPECIAL_TOKENS)}
-    enc = tiktoken.Encoding(
-        name="rustbpe",
-        pat_str=pattern,
-        mergeable_ranks=mergeable_ranks,
-        special_tokens=special_tokens,
-    )
 
-    # Save tokenizer
-    with open(tokenizer_pkl, "wb") as f:
-        pickle.dump(enc, f)
+def download_data():
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    print(f"Dataset: {DATASET_NAME}")
+    print(f"Cache:   {CACHE_DIR}")
 
-    t1 = time.time()
-    print(f"Tokenizer: trained in {t1 - t0:.1f}s, saved to {tokenizer_pkl}")
+    val_split = _find_split(["validation", "val", "test", "valid"])
+    if val_split is None:
+        sys.exit("Could not find a validation split (tried validation/val/test/valid).")
+    print(f"Downloading val split '{val_split}' (up to {N_VAL})...")
+    _download_split(val_split, N_VAL, VAL_IMG_DIR, VAL_META, shuffle=False)
 
-    # --- Build token_bytes lookup for BPB evaluation ---
-    print("Tokenizer: building token_bytes lookup...")
-    special_set = set(SPECIAL_TOKENS)
-    token_bytes_list = []
-    for token_id in range(enc.n_vocab):
-        token_str = enc.decode([token_id])
-        if token_str in special_set:
-            token_bytes_list.append(0)
-        else:
-            token_bytes_list.append(len(token_str.encode("utf-8")))
-    token_bytes_tensor = torch.tensor(token_bytes_list, dtype=torch.int32)
-    torch.save(token_bytes_tensor, token_bytes_path)
-    print(f"Tokenizer: saved token_bytes to {token_bytes_path}")
-
-    # Sanity check
-    test = "Hello world! Numbers: 123. Unicode: 你好"
-    encoded = enc.encode_ordinary(test)
-    decoded = enc.decode(encoded)
-    assert decoded == test, f"Tokenizer roundtrip failed: {test!r} -> {decoded!r}"
-    print(f"Tokenizer: sanity check passed (vocab_size={enc.n_vocab})")
+    print(f"Downloading train subset (seed={DATA_SEED}, {N_TRAIN} images)...")
+    _download_split("train", N_TRAIN, TRAIN_IMG_DIR, TRAIN_META, shuffle=True)
 
 # ---------------------------------------------------------------------------
-# Runtime utilities (imported by train.py)
+# Data access helpers (imported by train.py — train.py builds its own dataloader)
 # ---------------------------------------------------------------------------
 
-class Tokenizer:
-    """Minimal tokenizer wrapper. Training is handled above."""
-
-    def __init__(self, enc):
-        self.enc = enc
-        self.bos_token_id = enc.encode_single_token(BOS_TOKEN)
-
-    @classmethod
-    def from_directory(cls, tokenizer_dir=TOKENIZER_DIR):
-        with open(os.path.join(tokenizer_dir, "tokenizer.pkl"), "rb") as f:
-            enc = pickle.load(f)
-        return cls(enc)
-
-    def get_vocab_size(self):
-        return self.enc.n_vocab
-
-    def get_bos_token_id(self):
-        return self.bos_token_id
-
-    def encode(self, text, prepend=None, num_threads=8):
-        if prepend is not None:
-            prepend_id = prepend if isinstance(prepend, int) else self.enc.encode_single_token(prepend)
-        if isinstance(text, str):
-            ids = self.enc.encode_ordinary(text)
-            if prepend is not None:
-                ids.insert(0, prepend_id)
-        elif isinstance(text, list):
-            ids = self.enc.encode_ordinary_batch(text, num_threads=num_threads)
-            if prepend is not None:
-                for row in ids:
-                    row.insert(0, prepend_id)
-        else:
-            raise ValueError(f"Invalid input type: {type(text)}")
-        return ids
-
-    def decode(self, ids):
-        return self.enc.decode(ids)
-
-
-def get_token_bytes(device="cpu"):
-    path = os.path.join(TOKENIZER_DIR, "token_bytes.pt")
-    with open(path, "rb") as f:
-        return torch.load(f, map_location=device)
-
-
-def _document_batches(split, tokenizer_batch_size=128):
-    """Infinite iterator over document batches from parquet files."""
-    parquet_paths = list_parquet_files()
-    assert len(parquet_paths) > 0, "No parquet files found. Run prepare.py first."
-    val_path = os.path.join(DATA_DIR, VAL_FILENAME)
+def load_index(split):
+    """Return (image_dir, DataFrame) for 'train' or 'val'. The df has at least
+    path/latitude/longitude, plus any available side columns."""
+    import pandas as pd
     if split == "train":
-        parquet_paths = [p for p in parquet_paths if p != val_path]
-        assert len(parquet_paths) > 0, "No training shards found."
-    else:
-        parquet_paths = [val_path]
-    epoch = 1
-    while True:
-        for filepath in parquet_paths:
-            pf = pq.ParquetFile(filepath)
-            for rg_idx in range(pf.num_row_groups):
-                rg = pf.read_row_group(rg_idx)
-                batch = rg.column('text').to_pylist()
-                for i in range(0, len(batch), tokenizer_batch_size):
-                    yield batch[i:i+tokenizer_batch_size], epoch
-        epoch += 1
+        return TRAIN_IMG_DIR, pd.read_parquet(TRAIN_META)
+    elif split == "val":
+        return VAL_IMG_DIR, pd.read_parquet(VAL_META)
+    raise ValueError(split)
 
 
-def make_dataloader(tokenizer, B, T, split, buffer_size=1000):
-    """
-    BOS-aligned dataloader with best-fit packing.
-    Every row starts with BOS. Documents packed using best-fit to minimize cropping.
-    When no document fits remaining space, crops shortest doc to fill exactly.
-    100% utilization (no padding).
-    """
-    assert split in ["train", "val"]
-    row_capacity = T + 1
-    batches = _document_batches(split)
-    bos_token = tokenizer.get_bos_token_id()
-    doc_buffer = []
-    epoch = 1
-
-    def refill_buffer():
-        nonlocal epoch
-        doc_batch, epoch = next(batches)
-        token_lists = tokenizer.encode(doc_batch, prepend=bos_token)
-        doc_buffer.extend(token_lists)
-
-    # Pre-allocate buffers: [inputs (B*T) | targets (B*T)]
-    row_buffer = torch.empty((B, row_capacity), dtype=torch.long)
-    cpu_buffer = torch.empty(2 * B * T, dtype=torch.long, pin_memory=True)
-    gpu_buffer = torch.empty(2 * B * T, dtype=torch.long, device="cuda")
-    cpu_inputs = cpu_buffer[:B * T].view(B, T)
-    cpu_targets = cpu_buffer[B * T:].view(B, T)
-    inputs = gpu_buffer[:B * T].view(B, T)
-    targets = gpu_buffer[B * T:].view(B, T)
-
-    while True:
-        for row_idx in range(B):
-            pos = 0
-            while pos < row_capacity:
-                while len(doc_buffer) < buffer_size:
-                    refill_buffer()
-
-                remaining = row_capacity - pos
-
-                # Find largest doc that fits entirely
-                best_idx = -1
-                best_len = 0
-                for i, doc in enumerate(doc_buffer):
-                    doc_len = len(doc)
-                    if doc_len <= remaining and doc_len > best_len:
-                        best_idx = i
-                        best_len = doc_len
-
-                if best_idx >= 0:
-                    doc = doc_buffer.pop(best_idx)
-                    row_buffer[row_idx, pos:pos + len(doc)] = torch.tensor(doc, dtype=torch.long)
-                    pos += len(doc)
-                else:
-                    # No doc fits — crop shortest to fill remaining
-                    shortest_idx = min(range(len(doc_buffer)), key=lambda i: len(doc_buffer[i]))
-                    doc = doc_buffer.pop(shortest_idx)
-                    row_buffer[row_idx, pos:pos + remaining] = torch.tensor(doc[:remaining], dtype=torch.long)
-                    pos += remaining
-
-        cpu_inputs.copy_(row_buffer[:, :-1])
-        cpu_targets.copy_(row_buffer[:, 1:])
-        gpu_buffer.copy_(cpu_buffer, non_blocking=True)
-        yield inputs, targets, epoch
+def open_image(img_dir, path):
+    from PIL import Image
+    img = Image.open(os.path.join(img_dir, path))
+    return img.convert("RGB") if img.mode != "RGB" else img
 
 # ---------------------------------------------------------------------------
 # Evaluation (DO NOT CHANGE — this is the fixed metric)
 # ---------------------------------------------------------------------------
 
-@torch.no_grad()
-def evaluate_bpb(model, tokenizer, batch_size):
+def evaluate_geo(predict_fn, split="val", subset=None, batch_size=64):
+    """FROZEN evaluator. Feeds val images to the model's `predict_fn` and scores its
+    coordinate predictions against ground truth.
+
+    predict_fn(pil_images: list[PIL.Image]) -> (lat, lon) as array-likes of length B,
+    in degrees. The model may preprocess however it likes internally; it only ever
+    returns coordinates, so the objective can't be gamed from train.py.
+
+    `subset`: if an int, evaluate on the first `subset` rows (fixed, for fast in-training
+    monitoring). None = full split (the official score). Returns the geo_metrics dict.
     """
-    Bits per byte (BPB): vocab size-independent evaluation metric.
-    Sums per-token cross-entropy (in nats), sums target byte lengths,
-    then converts nats/byte to bits/byte. Special tokens (byte length 0)
-    are excluded from both sums.
-    Uses fixed MAX_SEQ_LEN so results are comparable across configs.
-    """
-    token_bytes = get_token_bytes(device="cuda")
-    val_loader = make_dataloader(tokenizer, batch_size, MAX_SEQ_LEN, "val")
-    steps = EVAL_TOKENS // (batch_size * MAX_SEQ_LEN)
-    total_nats = 0.0
-    total_bytes = 0
-    for _ in range(steps):
-        x, y, _ = next(val_loader)
-        loss_flat = model(x, y, reduction='none').view(-1)
-        y_flat = y.view(-1)
-        nbytes = token_bytes[y_flat]
-        mask = nbytes > 0
-        total_nats += (loss_flat * mask).sum().item()
-        total_bytes += nbytes.sum().item()
-    return total_nats / (math.log(2) * total_bytes)
+    img_dir, df = load_index(split)
+    if subset is not None:
+        df = df.iloc[:subset]
+    n = len(df)
+    paths = df["path"].tolist()
+    true_lat = df["latitude"].to_numpy(dtype=np.float64)
+    true_lon = df["longitude"].to_numpy(dtype=np.float64)
+
+    pred_lat = np.empty(n, dtype=np.float64)
+    pred_lon = np.empty(n, dtype=np.float64)
+    for start in range(0, n, batch_size):
+        end = min(start + batch_size, n)
+        imgs = [open_image(img_dir, paths[j]) for j in range(start, end)]
+        lat, lon = predict_fn(imgs)
+        pred_lat[start:end] = np.asarray(lat, dtype=np.float64).reshape(-1)
+        pred_lon[start:end] = np.asarray(lon, dtype=np.float64).reshape(-1)
+    return geo_metrics(pred_lat, pred_lon, true_lat, true_lon)
 
 # ---------------------------------------------------------------------------
 # Hard training-time deadline (DO NOT CHANGE — keeps the per-experiment limit honest)
 # ---------------------------------------------------------------------------
 # train.py self-stops via its per-step time check, but that can drift (a slow step, an
 # uncounted warm-up, or a hang). This arms a real wall-clock alarm: when it fires, SIGALRM
-# raises TrainingTimeUp in the main thread, so training stops *promptly and gracefully* —
-# train.py catches it and still runs the final eval, so you always get a val_bpb.
+# raises TrainingTimeUp in the main thread, so training stops promptly and gracefully —
+# train.py catches it and still runs the final eval, so you always get a score.
 
 class TrainingTimeUp(Exception):
     """Raised in the main thread when the hard training-time deadline fires."""
 
-def start_training_clock(grace_seconds=30):
+
+def start_training_clock(grace_seconds=45):
     """Arm a HARD wall-clock cap on the training phase. Call right before the training loop.
-    Fires at TIME_BUDGET + grace from now; the grace covers the uncounted warm-up steps so a
-    healthy run still stops via its own per-step check first, and the alarm only bites on
-    overruns/hangs. Wrap the loop in `try: ... except TrainingTimeUp: pass`, then eval."""
+    Fires at TIME_BUDGET + grace; the grace covers uncounted warm-up/compile so a healthy
+    run stops via its own per-step check first and the alarm only bites on overruns/hangs."""
     def _on_deadline(signum, frame):
         raise TrainingTimeUp()
     signal.signal(signal.SIGALRM, _on_deadline)
     signal.setitimer(signal.ITIMER_REAL, max(1.0, TIME_BUDGET + grace_seconds))
+
 
 def stop_training_clock():
     """Disarm the deadline. Call after the loop, before eval, so the alarm can't interrupt
@@ -399,21 +287,13 @@ def stop_training_clock():
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Prepare data and tokenizer for autoresearch")
-    parser.add_argument("--num-shards", type=int, default=10, help="Number of training shards to download (-1 = all). Val shard is always pinned.")
-    parser.add_argument("--download-workers", type=int, default=8, help="Number of parallel download workers")
+    parser = argparse.ArgumentParser(description="Prepare geolocalization data for autoresearch")
+    # --num-shards is accepted for vast.py setup-script compatibility but ignored here;
+    # the subset size is controlled by AR_N_TRAIN / AR_N_VAL.
+    parser.add_argument("--num-shards", type=int, default=8, help="(ignored; kept for compatibility)")
+    parser.add_argument("--download-workers", type=int, default=8, help="(ignored)")
     args = parser.parse_args()
 
-    num_shards = MAX_SHARD if args.num_shards == -1 else args.num_shards
-
-    print(f"Cache directory: {CACHE_DIR}")
-    print()
-
-    # Step 1: Download data
-    download_data(num_shards, download_workers=args.download_workers)
-    print()
-
-    # Step 2: Train tokenizer
-    train_tokenizer()
+    download_data()
     print()
     print("Done! Ready to train.")

@@ -22,3 +22,6 @@ results.tsv
 # Vast session state (per-session; never commit)
 .vast_state*.json
 findings.md
+
+# secrets forwarded to the box (never commit)
+.env

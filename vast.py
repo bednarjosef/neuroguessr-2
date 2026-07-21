@@ -50,7 +50,9 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -340,7 +342,7 @@ def cmd_sync(a) -> None:
     print(f"uploading repo -> {REMOTE_DIR} (tar over ssh)…")
     excludes = " ".join(f"--exclude=./{x}" for x in
                         (".venv", ".git", ".vast_state.json", "results.tsv",
-                         "__pycache__", "findings.md", "dev"))
+                         "__pycache__", "findings.md", "dev", ".env"))
     remote = " ".join(ssh_base(s)) + f" 'mkdir -p {REMOTE_DIR} && tar xzf - -C {REMOTE_DIR}'"
     subprocess.run(f"tar czf - {excludes} -C {REPO} . | {remote}", shell=True, check=True)
     print("upload complete.")
@@ -350,6 +352,7 @@ SETUP_SCRIPT = r"""
 set -e
 cd {REMOTE_DIR}
 export HF_HUB_DISABLE_PROGRESS_BARS=1
+{FORWARD_EXPORTS}
 TPY=/venv/main/bin/python
 
 # Prefer the template's PREINSTALLED torch -> no multi-GB torch download per box.
@@ -359,7 +362,8 @@ if [ -x "$TPY" ] && "$TPY" -c "import torch,sys; from torch.nn.functional import
   echo "=== using template torch (no download) ==="
   "$PY" -c "import torch; print('torch', torch.__version__, 'cuda', torch.version.cuda, 'on', torch.cuda.get_device_name(0))"
   echo "=== installing light deps only (torch already present) ==="
-  "$PY" -m pip install -q --no-input "kernels>=0.11.7" rustbpe tiktoken pyarrow requests "numpy>=1.26"
+  "$PY" -m pip install -q --no-input "transformers>=4.55" "peft>=0.13" "accelerate>=0.34" \
+    "datasets>=3.0" "huggingface_hub>=0.25" "wandb>=0.18" pillow pyarrow pandas requests "numpy>=1.26" safetensors
 else
   echo "=== template torch unusable -> building .venv with uv (downloads torch) ==="
   export PATH="$HOME/.local/bin:$PATH"
@@ -369,10 +373,10 @@ else
 fi
 echo "REMOTE_PY=$PY"
 
-echo "=== FA3 kernel smoke (validates the torch<->kernel match; small download) ==="
-"$PY" -c "import torch; from kernels import get_kernel; cap=torch.cuda.get_device_capability(); repo='varunneal/flash-attention-3' if cap==(9,0) else 'kernels-community/flash-attn3'; get_kernel(repo, revision='main').flash_attn_interface; print('FA3 OK from', repo)"
+echo "=== backbone smoke (transformers + peft import + CUDA visible) ==="
+"$PY" -c "import torch, transformers, peft; print('transformers', transformers.__version__, 'peft', peft.__version__, 'cuda', torch.cuda.is_available())"
 
-echo "=== prepare.py (download shards + train tokenizer; idempotent, cached) ==="
+echo "=== prepare.py (download fixed geolocalization subset; idempotent, cached) ==="
 "$PY" prepare.py --num-shards {NUM_SHARDS}
 
 echo "GPU_COUNT=$(nvidia-smi -L | wc -l)"
@@ -384,7 +388,8 @@ echo "=== setup complete ==="
 def cmd_setup(a) -> None:
     cmd_sync(a)
     s = require_state()
-    script = SETUP_SCRIPT.format(REMOTE_DIR=REMOTE_DIR, NUM_SHARDS=a.num_shards)
+    exports = "\n".join(f"export {kv}" for kv in _forward_env_fragment().split()) if _forward_env_fragment() else ""
+    script = SETUP_SCRIPT.format(REMOTE_DIR=REMOTE_DIR, NUM_SHARDS=a.num_shards, FORWARD_EXPORTS=exports)
     # Stream setup output live so the user/agent can watch the (slow) data prep.
     p = subprocess.run(ssh_base(s) + [script])
     if p.returncode != 0:
@@ -435,6 +440,55 @@ def parse_metrics(text: str) -> dict:
     return out
 
 
+# Secrets/config forwarded to the experiment box (HF gated-model access + W&B tracking).
+# Loaded from a gitignored .env in the repo root and/or the local environment (env wins).
+FORWARD_ENV_KEYS = ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "WANDB_API_KEY",
+                    "WANDB_PROJECT", "WANDB_ENTITY", "WANDB_MODE", "AR_RUN_NAME",
+                    "AR_N_TRAIN", "AR_N_VAL", "AR_QUICK_VAL_N")
+
+
+def _load_dotenv() -> dict:
+    """Parse simple KEY=VALUE lines from REPO/.env (if present). Never uploaded to the box."""
+    out = {}
+    envf = REPO / ".env"
+    if envf.exists():
+        for line in envf.read_text().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            out[k.strip()] = v.strip().strip('"').strip("'")
+    return out
+
+
+def _wandb_key_from_netrc() -> str | None:
+    """Read the W&B API key from ~/.netrc (machine api.wandb.ai) — the standard place the
+    `wandb` CLI stores it after `wandb login`. Lets us forward it to the box without copying
+    the secret into any file. Returns None if not present."""
+    try:
+        import netrc
+        auth = netrc.netrc().authenticators("api.wandb.ai")
+        return auth[2] if auth else None
+    except Exception:
+        return None
+
+
+def _forward_env_fragment() -> str:
+    """Build the ` KEY=val ...` fragment of forwarded secrets/config for the remote command.
+    Precedence: os.environ > .env > (for WANDB_API_KEY only) ~/.netrc. Only whitelisted keys."""
+    merged = {**_load_dotenv(), **os.environ}
+    if not merged.get("WANDB_API_KEY"):
+        k = _wandb_key_from_netrc()
+        if k:
+            merged["WANDB_API_KEY"] = k
+    parts = []
+    for k in FORWARD_ENV_KEYS:
+        v = merged.get(k)
+        if v:
+            parts.append(f"{k}={shlex.quote(v)}")
+    return (" " + " ".join(parts)) if parts else ""
+
+
 def _effective_launcher(s: dict) -> str:
     """Resolve the stored launcher preference to a concrete mode for this box. 'auto' ->
     'torchrun' on a multi-GPU box (one model sharded across the GPUs with torch.distributed),
@@ -460,7 +514,8 @@ def _launch_cmd(s: dict, script: str) -> str:
     budget = s.get("time_budget_s", 300)  # variable per session; prepare.py reads AR_TIME_BUDGET
     devices = ",".join(str(i) for i in range(n))
     env = (f"env CUDA_VISIBLE_DEVICES={devices} PYTHONPATH={REMOTE_DIR} "
-           f"AR_TIME_BUDGET={budget} AR_NUM_GPUS={n} TORCHINDUCTOR_CACHE_DIR={REMOTE_CACHE}")
+           f"AR_TIME_BUDGET={budget} AR_NUM_GPUS={n} TORCHINDUCTOR_CACHE_DIR={REMOTE_CACHE}"
+           f"{_forward_env_fragment()}")  # + forwarded HF_TOKEN / WANDB_* / AR_N_* from .env
     if _effective_launcher(s) == "torchrun":
         # `python -m torch.distributed.run` (== torchrun) via the same interpreter, so it
         # doesn't depend on PATH. --standalone = single-node rendezvous on a free port.
