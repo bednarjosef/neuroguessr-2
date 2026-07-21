@@ -54,6 +54,16 @@ _(each entry: what was tried, what happened, and the takeaway so it isn't retrie
   at 8-min budgets diversity beats the contrastive signal. Retry only with much longer budgets
   or a sampler that keeps ≥75% unique locations.
 
+## Parked for LONG-budget runs (better per-step, worse per-second — revisit when --minutes grows)
+
+- **bs48×1 @384** (exp 14): quick-val median hit ~221 km by step ~800 vs ~235 km for champion
+  bs24×2 at similar steps — clearly better per-step learning (bigger real batch), but the fused
+  pass ran at 92 vs 106 img/s so it lost under the 8-min clock (246.9 vs 238.0 full-val).
+  First thing to re-try in any long/final training run.
+- **Practice (Josef, 2026-07-21): when discarding an idea that lost on throughput, ALWAYS check
+  W&B val/median_km at matched step counts; if it's better per-step, park it here instead of
+  calling it a dead end. The session constraint is TIME, but long runs are constrained differently.**
+
 ## Open ideas / next to try (ranked)
 
 _(carry unfinished/promising directions forward across sessions)_
