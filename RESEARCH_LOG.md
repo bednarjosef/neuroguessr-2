@@ -179,6 +179,32 @@ _(each entry: what was tried, what happened, and the takeaway so it isn't retrie
 
 _(carry unfinished/promising directions forward across sessions)_
 
+### Invented 2026-07-22 (during full run) — novel mechanisms, ranked; designed from OUR evidence
+
+1. **MSL — Median-Seeking Loss.** Differentiable prediction: v = normalize(Σ softmax(logits/T)·centroid),
+   penalize haversine(v, true) with a REDESCENDING robust loss (Geman–McClure d²/(d²+s²), s≈300km).
+   Kills the train(CE-on-cells)/test(spherical-mean) mismatch; gradient vanishes on hopeless tail
+   cases = literally optimizes the median; net learns sub-cell interpolation → quantization floor
+   dissolves without more cells. Soft-argmax/integral regression (pose estimation) ported to the
+   sphere + median-robustifier. ONE loss term — 8-min-testable. TRY FIRST next session.
+2. **PanoDistill.** Train data is 300k locations × 4 headings treated as independent — waste.
+   Distill the fused 4-view posterior (geometric mean over the location's views, from an EMA copy,
+   no separate teacher) into each single view: KL(fused_EMA ‖ view). Single-view mobile contract
+   untouched; each view learns what the other three would reveal. Needs location-grouped sampler.
+3. **FreeEarth heads.** Coordinates → free small-vocab labels via public rasters: Köppen climate
+   (~30), biome (~14), coastal-distance band, elevation band, driving side (2). We PROVED small
+   semantic vocabs work (country 115 ✓) and big ones fail (subdiv 1895 ✗). Köppen first.
+4. **Confusion-forge sampling.** Online country-confusion matrix from quick evals → upsample the
+   top-confused country pairs. Country_acc (43% vs PIGEON 92%) IS the median gap.
+5. **EmbedOffset.** Why the S5 offset head died: N_CELLS×2 independent slots, ~30 samples each.
+   Fix: ONE shared tangent-offset MLP conditioned (FiLM) on the chosen cell's learned embedding.
+   Composes with MSL. Needs converged selector → full-run scale.
+6. **GeoKernel alignment.** In-batch Gram matrix of features aligned to exp(-d_ij/σ): feature
+   space becomes a metric atlas of Earth; makes future retrieval/kNN refinement strong.
+7. **vMF mixture head (moonshot).** 16-component von Mises–Fisher mixture on the sphere, NLL
+   loss — continuous, cell-free, no quantization floor by construction. Run as AUX head first
+   (mixture-collapse risk).
+
 Refreshed at end of session 2 (2026-07-21, champion ~231–238). Session 2 burned through most
 of the cheap menu — remaining ranked ideas:
 
