@@ -105,8 +105,10 @@ HEAD_DROPOUT = 0.1
 POOL = "cls"
 PATCH_KEEP = 0.6
 
-# Optimization — per-GPU batch is the proven 96 @ 31GB; LRs sqrt-scale with world size.
-DEVICE_BATCH_SIZE = 96
+# Optimization — bs84/GPU: the champion's bs96 peaks at 31.0GB on a 32GB 5090, and NCCL's
+# DDP communicator buffers add ~0.5-1GB/rank on top (smoke-test OOM); 84 is the fallback
+# pairing session 5 validated with PATCH_KEEP 0.6. LRs sqrt-scale with world size.
+DEVICE_BATCH_SIZE = int(os.environ.get("AR_BS", "84"))
 LR_SCALE = math.sqrt(WORLD)
 LORA_LR = 1e-4 * LR_SCALE
 HEAD_LR = 1e-3 * LR_SCALE
