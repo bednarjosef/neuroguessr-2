@@ -49,3 +49,9 @@ ae5c260	221.496372	25.5	keep	S4 baseline re-run of champion (221.5) — seed
 07bd934	210.295824	25.8	keep	S5 exp5b confirm: 209.53/210.30 both beat hard-CE champion — tau-country KEEP, champion ~209.9
 0000000	222.606257	25.8	discard	S5 exp6 retrieval refinement v1 (top8-NN blend .5 in top5 cells): 222.6 (+12.7) BUT acc@25 3.97% best ever — snap helps close cases, hurts median at top1=18%. One retune later: sim-gated cluster-centroid version
 0000000	216.616442	25.7	discard	S5 exp8 semantic geocells (country-constrained kmeans): 216.6 vs ~209.9 Estonia champion (+6.7, pending same-box anchor); top1 16.3 down; first country_acc reading 46.1%
+bcf1049	214.173295	25.7	keep	S5 anchor: champion re-run on Korea box 45534538 = 214.2 (box reads +4 vs Estonia; country_acc 44.6%)
+bcf1049	211.232747	29.0	keep	S5 exp9 ViT-H+ (0.84B, bs48): 214.2->211.2 marginal on median BUT mean 876 / acc2500 93.4% / geoguessr 3836 all best-ever at 1279 steps — confirming
+0000000	211.232747	29.0	discard	S5 exp9 ViT-H+ VERDICT (Josef): drop — gain marginal (211.2 vs 214.2), model too large; confirm aborted. Panel note: mean 876/acc2500 93.4% best-ever — capacity helps coarse geography, park for long budgets
+0000000	240.685631	25.7	discard	S5 exp10 H3-2122 as FINE cells: 240.7 (+26.5 vs 214.2) with top1 25.7/top5 52.8/country 54.5 ALL RECORDS — quantization-floor confirmed: balanced cells classify easier but guess coarser. Use as evidence level, not geometry
+0000000	222.689827	25.7	discard	S5 exp11 H3-2122 as extra hier LEVEL: 222.7 (+8.5) — 2k-way aux vocab steals gradient regardless of wiring (matches subdivision). Cell-scheme chapter CLOSED: kmeans2048+64/512+country is the 8-min optimum
+0000000	219.935678	25.8	discard	S5 exp12 within-cell offset head (per-cell tangent regression, zero-init, Huber): 219.9 (+5.7) — within-cell position is as hard as classification at 1500 steps; PARK for long budgets (needs converged selector)

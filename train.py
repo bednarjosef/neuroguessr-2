@@ -55,7 +55,7 @@ PRED_RADIUS_KM = 1000.0        # only average cells within this radius of the to
 HEAD_HIDDEN = 1024
 HEAD_DROPOUT = 0.1
 POOL = "cls"                   # "cls" | "mean" | "cls_mean"
-PATCH_KEEP = 0.5               # PatchDropout/FLIP: fraction of patch tokens kept in TRAIN
+PATCH_KEEP = 0.6               # PatchDropout/FLIP: fraction of patch tokens kept in TRAIN
                                # forwards (eval always uses all tokens); RoPE cos/sin are
                                # index-selected with the same mask so positions stay correct
 
