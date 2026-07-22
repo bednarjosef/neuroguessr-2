@@ -15,7 +15,16 @@ hierarchy follow-up, 7. LoRA on fc1/fc2. Literature sweeps between experiments.
 | 21 | EMA of trainables (0.999, warmup-corrected), evals on EMA copy | 236.1 | discard (+3.7 noise; ~1000 steps too few for EMA — PARK for long runs) |
 | 22 | surgical rerank: fused (cls+proto) picks/orders top-k cells, spherical-mean weights stay on original posterior | 236.3 | discard (+3.9 noise; top1 16.2/top5 44.9 up again, median flat — classifier-aux direction EXHAUSTED at 8-min budget) |
 | 23 | torch.compile(backbone, dynamic) + pre-clock warmup (compile cost outside wall alarm) | 224.8 | WIN −7.6 (+14% steps → 1205; top1 17.4% best; all panel metrics up). Costs ~10 min compile per run (wall 24 min). Confirm below |
-| 23b | confirm re-run of 23 | ? | running |
+| 23b | confirm re-run of 23 | 224.8 | **KEEP** (224.80/224.85 — champion 224.8 @ 804fe7f) |
+| 24 | bs48×1 (compile bought throughput back; parked exp14 said better per-step) | 221.5 | marginal −3.3 (1168 steps, vram 25.8GB, top5 46.3%), confirming |
+| 24b | confirm re-run of 24 | 221.6 | **KEEP** (221.47/221.56 — champion 221.5 @ ae5c260; parked exp14 idea graduates thanks to compile) |
+| 25 | LoRA also on gated MLP (up/gate/down_proj), r16 | OOM | crash (bs48 base is 26GB; MLP adapter activations blow 32GB — if ever retried, pair with bs24×2) |
+
+## Champion (end of session 3)
+
+- **221.5 km** @ ae5c260: prior stack + torch.compile(dynamic, pre-clock warmup) + bs48×1.
+  Panel: mean ~1094–1124 | acc@200 46.7% | acc@2500 90.7–91.4% | geoguessr ~3722 |
+  top1 16.4–17.7% | top5 45.8–46.3% | 1168 steps/8min | vram 25.5–26.4GB.
 
 **Emerging pattern (exps 19+20):** ideas that improve cell_top1/top5 keep WORSENING median —
 the bottleneck may now be the prediction geometry (how probs → coordinates), not classification.

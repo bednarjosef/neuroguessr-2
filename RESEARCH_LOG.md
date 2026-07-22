@@ -14,13 +14,14 @@ Objective: **`median_km`** (median great-circle error on the val split), **lower
 
 ## Current champion
 
-- **median_km:** 224.8 (confirmed twice: 224.80 / 224.85, session 3)
-- **train.py commit:** 804fe7f (branch autoresearch/2026-07-21c)
-- **one-line:** no-grad-ckpt (bs24x2, 32w) + 2048 geocells/topk16 + mode-seeking prediction
+- **median_km:** 221.5 (confirmed twice: 221.47 / 221.56, session 3)
+- **train.py commit:** ae5c260 (branch autoresearch/2026-07-21c, = master)
+- **one-line:** no-grad-ckpt + **bs48×1** (32w) + 2048 geocells/topk16 + mode-seeking prediction
   (T=0.5, 1000km locality) + hier heads 64/512/2048 (log-space, w 0.25/0.5/1.0) + IMG 384
   + EVAL_EVERY 250 + **torch.compile(backbone, dynamic=True) with pre-clock warmup**
-- **full metric panel:** mean_km ~1090 · acc@200km 46.6% · acc@2500km 91.4% · geoguessr 3726 ·
-  val cell_top1 17.4–17.7% (lift ~360x) · top5 46.1–46.3% · 1205–1218 steps/8min
+- **full metric panel:** mean_km ~1094–1124 · acc@200km 46.7% · acc@2500km ~91% · geoguessr
+  ~3722 · val cell_top1 16.4–17.7% · top5 45.8–46.3% · ~1168 steps/8min · vram 26GB (5090-only:
+  would OOM a 24GB 4090 — drop to bs24×2 there)
 
 ## Banked wins (confirmed to help — keep these, don't re-litigate)
 
@@ -41,6 +42,10 @@ _(each entry: the change, the median_km delta, and why it likely helped)_
   of the WALL-clock SIGALRM window (480+45s) — fewer evals = full 480s of real training, 1056
   steps. Harness-efficiency win, NOT a modeling insight (label it as such). TTA/eval-time ideas
   must go in the final eval only (alarm disarmed there).
+- **bs48×1 @384 under compile** (224.8→221.5 CONFIRMED 221.47/221.56, session 3): the parked
+  exp-14 idea (bigger real batch, better per-step) graduates — compile bought back the
+  throughput the fused bs48 pass used to lose (1168 steps vs 1205 at bs24×2; per-step gain
+  wins). VRAM 26GB of 32 — fine on 5090, would OOM a 4090.
 - **torch.compile(backbone, dynamic=True) + pre-clock warmup** (232.4→224.8 CONFIRMED twice,
   session 3): compile+warmup (fwd+bwd + eval-mode fwd at 2-3 shapes) runs BEFORE
   start_training_clock, so the compile tax lands outside the wall alarm and every in-alarm step
@@ -83,13 +88,13 @@ _(each entry: what was tried, what happened, and the takeaway so it isn't retrie
   EXHAUSTED at this budget (geo-contrastive, proto head, and pano-InfoNCE all show it).
 - **EMA (S3 exp21, decay .999 warmup-corrected)**: 236.1 (+3.7 noise) — ~1000 steps is too few
   for EMA to average anything. Parked for long runs.
+- **LoRA on gated MLP (up/gate/down_proj) at bs48**: OOM (26GB base + MLP adapter activations
+  >32GB). Untested at bs24×2 — if retried, pair with smaller device batch. DINOv3 MLP module
+  names are up_proj/gate_proj/down_proj (gated MLP, NOT fc1/fc2).
 
 ## Parked for LONG-budget runs (better per-step, worse per-second — revisit when --minutes grows)
 
-- **bs48×1 @384** (exp 14): quick-val median hit ~221 km by step ~800 vs ~235 km for champion
-  bs24×2 at similar steps — clearly better per-step learning (bigger real batch), but the fused
-  pass ran at 92 vs 106 img/s so it lost under the 8-min clock (246.9 vs 238.0 full-val).
-  First thing to re-try in any long/final training run.
+- ~~bs48×1 @384~~ **GRADUATED in session 3** (banked win above) — compile fixed its throughput.
 - **Geo-safe augmentation** (exp 15): neutral at 0.5 epochs; will matter once long runs do
   multiple epochs. Code is in git history (exp 15, commit range around a2f907c).
 - **IMG_SIZE 448** may re-win at long budgets where steps aren't the binding constraint.
@@ -203,6 +208,19 @@ _(anything about the box, dataset, VRAM ceilings, throughput, DINOv3 quirks, etc
 ## Session history
 
 _(one dated block per session: dates, champion at start → end, headline results)_
+
+### 2026-07-22 (session 3)
+- Champion at start: 229.9 (box baseline 232.4) → at end: **221.5** (ae5c260), −4.7% this session
+- Experiments run: 10 (baseline + 7 ideas + 2 confirms; 2 KEEP confirmed, 5 discard)
+- Headline: **torch.compile + pre-clock warmup** (−7.6, +14% steps) then **bs48×1 graduates
+  from the parked list** (−3.3 confirmed twice) — both wins are throughput/optimization-scale;
+  ALL classifier-side auxiliaries (geo-contrastive, proto ensemble, surgical rerank, EMA)
+  improved cell_top1/top5 but left median flat → at 8-min budgets, don't buy classification,
+  buy steps. Reranking/aux ideas should be re-tested only at long budgets.
+- Infra: CA DC 209.146.116.50 confirmed broken (2 dead boxes, ~$0.30); vast.py now sends SSH
+  keepalives; `--offer-id` handpick of the Thailand host worked; cache-tar setup ~2 min.
+- Follow-ups: LoRA-on-MLP result (exp 25, see findings), GeM pooling untried, country-code aux
+  untried (but see aux-head pattern above), deeper-hierarchy follow-up still unused.
 
 ### 2026-07-21 (session 2, evening)
 - Champion at start: 283.4 (baseline re-run 282.8) → at end: **229.9** (32075c7), −19% this session

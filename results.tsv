@@ -26,3 +26,6 @@ a2f907c	230.929419	13.7	discard	EVAL_EVERY 250: 230.9 (-7.1, below 8km bar) — 
 32075c7	236.316596	13.7	discard	S3 exp22 surgical rerank (fused selects cells, orig posterior weights) — +3.9 noise; cell_top1 16.2/top5 44.9 up AGAIN but median flat — classifier-aux direction exhausted at 8min
 32075c7	224.798044	13.7	keep	S3 exp23 torch.compile(backbone,dynamic)+pre-clock warmup — 224.8 (−7.6), +14% steps (1205), top1 17.4%; confirm re-run in flight
 804fe7f	224.846350	13.7	keep	S3 exp23b confirm — 224.8 twice; torch.compile banked, NEW CHAMPION
+804fe7f	221.472314	25.8	keep	S3 exp24 bs48x1 compiled — 221.5 (−3.3, marginal; exp14 per-step evidence supports), confirming
+ae5c260	221.555668	25.5	keep	S3 exp24b confirm — 221.5/221.6, bs48x1 banked, NEW CHAMPION
+ae5c260	0.000000	31.4	crash	S3 exp25 LoRA on gated MLP (up/gate/down) — OOM at bs48 (26GB base + MLP adapter activations >32GB); would need bs24 pairing, not retried bigger
