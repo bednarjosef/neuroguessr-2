@@ -205,6 +205,32 @@ _(carry unfinished/promising directions forward across sessions)_
    loss — continuous, cell-free, no quantization floor by construction. Run as AUX head first
    (mixture-collapse risk).
 
+### Invented 2026-07-22 part 2 — beating the CELL BOUND itself (floor @5000 cells = 34.2 km,
+### measured; NOTE: floor applies to argmax readout only — the spherical-mean readout can go
+### BELOW it, and a 100%-confident perfect classifier would score exactly 34.2, i.e. 100%
+### top1 is not even optimal under our prediction rule)
+
+8. **Barycentric geo-labels (TRY FIRST of this batch — pure label engineering, 8-min-testable).**
+   Construct soft targets that are EXACTLY INVERTIBLE by the readout: per point, weights over
+   K≈8 nearest centroids (w≥0, Σw=1, + entropy reg) s.t. weighted spherical mean of centroids
+   = true point. Labels carry sub-cell coordinates; perfect learning ⇒ exact location through
+   the EXISTING head/readout. Floor gone in expectation. Composes with MSL.
+9. **Staggered tessellation ensemble.** 2-3 fine heads on different k-means seeds; Voronoi
+   boundaries don't align → combined posterior (concat centroid/weight pairs into one
+   spherical mean) has ~√2-√3 lower effective floor for ~5MB/head. Dithered quantization.
+10. **Within-cell exemplar memory (retrieval, scoped).** S5 global retrieval failed; fix =
+    per-cell scope: ~16 PCA-64 exemplars/cell + exact coords (20MB — mobile-viable). Predict
+    weighted mean of EXEMPLAR coords after cell choice → nearest-neighbor floor (few km).
+    Needs full-run checkpoint features — natural follow-up to the 2026-07-22 full run.
+11. **Regional GPS heads.** Offset-head autopsy: per-FINE-cell slots starved (~30 samples).
+    Flip granularity: 64 COARSE-region tangent-plane regression experts (~19k samples each),
+    gated by coarse posterior. Dense supervision, region-miss-proof.
+12. **Progressive cell splitting.** Split highest-residual cells during training, warm-start
+    child logits from parent → adaptive mesh refinement; end ~12-15k cells (floor ~20km)
+    without cold-starting a big head.
+    Cell_top1 levers (it's a pessimistic proxy; don't chase 100%): confusion-forge, FreeEarth,
+    PanoDistill, TTA self-ensemble over PatchDropout masks (2-3 fwd, mobile-affordable).
+
 Refreshed at end of session 2 (2026-07-21, champion ~231–238). Session 2 burned through most
 of the cheap menu — remaining ranked ideas:
 
