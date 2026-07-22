@@ -13,7 +13,9 @@ hierarchy follow-up, 7. LoRA on fc1/fc2. Literature sweeps between experiments.
 | 19 | geo-contrastive hard negatives (proj128, margin .3, far>1500km, λ=.1) | 238.7 | discard (+6.3; cell_top1 15.7 ticked UP but median down; −5% steps. Margin/λ may be off — one retune allowed later) |
 | 20 | per-cell prototype cosine head (256d, temp .07, w .5) + log-space ensemble at pred | 239.7 | discard (+7.2; cell_top1 16.4% BEST + acc25 up, median down — fused sharper posterior hurts the spherical-mean geometry) |
 | 21 | EMA of trainables (0.999, warmup-corrected), evals on EMA copy | 236.1 | discard (+3.7 noise; ~1000 steps too few for EMA — PARK for long runs) |
-| 22 | surgical rerank: fused (cls+proto) picks/orders top-k cells, spherical-mean weights stay on original posterior | ? | running |
+| 22 | surgical rerank: fused (cls+proto) picks/orders top-k cells, spherical-mean weights stay on original posterior | 236.3 | discard (+3.9 noise; top1 16.2/top5 44.9 up again, median flat — classifier-aux direction EXHAUSTED at 8-min budget) |
+| 23 | torch.compile(backbone, dynamic) + pre-clock warmup (compile cost outside wall alarm) | 224.8 | WIN −7.6 (+14% steps → 1205; top1 17.4% best; all panel metrics up). Costs ~10 min compile per run (wall 24 min). Confirm below |
+| 23b | confirm re-run of 23 | ? | running |
 
 **Emerging pattern (exps 19+20):** ideas that improve cell_top1/top5 keep WORSENING median —
 the bottleneck may now be the prediction geometry (how probs → coordinates), not classification.

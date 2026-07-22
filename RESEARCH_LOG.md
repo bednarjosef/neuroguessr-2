@@ -14,13 +14,13 @@ Objective: **`median_km`** (median great-circle error on the val split), **lower
 
 ## Current champion
 
-- **median_km:** 229.9 (confirmed twice: 230.9 / 229.9)
-- **train.py commit:** 32075c7 (branch autoresearch/2026-07-21b)
+- **median_km:** 224.8 (confirmed twice: 224.80 / 224.85, session 3)
+- **train.py commit:** 804fe7f (branch autoresearch/2026-07-21c)
 - **one-line:** no-grad-ckpt (bs24x2, 32w) + 2048 geocells/topk16 + mode-seeking prediction
   (T=0.5, 1000km locality) + hier heads 64/512/2048 (log-space, w 0.25/0.5/1.0) + IMG 384
-  + EVAL_EVERY 250 (full 480s training inside the wall alarm)
-- **full metric panel:** mean_km 1111 · acc@200km 45.6% · acc@2500km 91.0% · geoguessr 3693 ·
-  val cell_top1 14.8–16.0% (lift ~300–330x) · top5 43–44%
+  + EVAL_EVERY 250 + **torch.compile(backbone, dynamic=True) with pre-clock warmup**
+- **full metric panel:** mean_km ~1090 · acc@200km 46.6% · acc@2500km 91.4% · geoguessr 3726 ·
+  val cell_top1 17.4–17.7% (lift ~360x) · top5 46.1–46.3% · 1205–1218 steps/8min
 
 ## Banked wins (confirmed to help — keep these, don't re-litigate)
 
@@ -41,6 +41,12 @@ _(each entry: the change, the median_km delta, and why it likely helped)_
   of the WALL-clock SIGALRM window (480+45s) — fewer evals = full 480s of real training, 1056
   steps. Harness-efficiency win, NOT a modeling insight (label it as such). TTA/eval-time ideas
   must go in the final eval only (alarm disarmed there).
+- **torch.compile(backbone, dynamic=True) + pre-clock warmup** (232.4→224.8 CONFIRMED twice,
+  session 3): compile+warmup (fwd+bwd + eval-mode fwd at 2-3 shapes) runs BEFORE
+  start_training_clock, so the compile tax lands outside the wall alarm and every in-alarm step
+  is compiled → +14% steps (1205 vs 1057), cell_top1 15.4→17.4%. Costs ~6-10 min extra wall per
+  run (first run on a box slowest; inductor cache helps after). dynamic=True + multi-shape eval
+  warmup prevents recompile stalls during quick evals.
 
 ## Dead ends & mistakes (tried, did NOT help or broke — do NOT repeat)
 
@@ -67,6 +73,16 @@ _(each entry: what was tried, what happened, and the takeaway so it isn't retrie
   crops drop peripheral cues and averaging blurs the mode our mode-seeking rule needs. Skip TTA.
 - **Geo-safe augmentation (RRC 0.5–1.0 + jitter 0.15)**: 239.3, neutral at 0.5 epochs — nothing
   to regularize yet. Parked for long runs (below).
+- **Geo-contrastive hard negatives v1 (S3 exp19: proj128, margin .3, far>1500km, λ=.1)**: 238.7
+  (+6.3 vs 232.4 box-baseline). cell_top1 ticked UP; median down; −5% steps. One retune allowed
+  someday (semivariogram range-weighting instead of fixed margin), low priority.
+- **Prototype cosine head, both variants (S3 exps 20+22)**: log-space ensemble 239.7; surgical
+  rerank (fused selects cells, original posterior weights the mean) 236.3. Consistent pattern:
+  cell_top1/top5 improve (16.2–16.4/44.9), median does NOT. At 8-min budgets a +1pp top1 gain
+  moves too few val rows to shift the 50th percentile; the aux-classifier-head direction is
+  EXHAUSTED at this budget (geo-contrastive, proto head, and pano-InfoNCE all show it).
+- **EMA (S3 exp21, decay .999 warmup-corrected)**: 236.1 (+3.7 noise) — ~1000 steps is too few
+  for EMA to average anything. Parked for long runs.
 
 ## Parked for LONG-budget runs (better per-step, worse per-second — revisit when --minutes grows)
 

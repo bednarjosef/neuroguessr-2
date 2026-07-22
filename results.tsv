@@ -23,3 +23,6 @@ a2f907c	230.929419	13.7	discard	EVAL_EVERY 250: 230.9 (-7.1, below 8km bar) — 
 32075c7	238.697009	13.7	discard	S3 exp19 geo-contrastive hard negatives (proj128, margin .3, far>1500km, w=.1) — +6.3 worse; cell_top1 15.7 (up) but median down, -5% steps
 32075c7	239.673537	13.7	discard	S3 exp20 prototype cosine head + log-space ensemble (256d, temp .07, beta 1) — +7.2 worse; cell_top1 16.4% BEST, acc25 3.4% up, median down — sharper fused posterior hurts spherical mean
 32075c7	236.078433	13.7	discard	S3 exp21 EMA of trainables (0.999 warmup-corrected, eval EMA copy) — +3.7 (noise); too few steps for EMA to shine, park for long runs
+32075c7	236.316596	13.7	discard	S3 exp22 surgical rerank (fused selects cells, orig posterior weights) — +3.9 noise; cell_top1 16.2/top5 44.9 up AGAIN but median flat — classifier-aux direction exhausted at 8min
+32075c7	224.798044	13.7	keep	S3 exp23 torch.compile(backbone,dynamic)+pre-clock warmup — 224.8 (−7.6), +14% steps (1205), top1 17.4%; confirm re-run in flight
+804fe7f	224.846350	13.7	keep	S3 exp23b confirm — 224.8 twice; torch.compile banked, NEW CHAMPION
