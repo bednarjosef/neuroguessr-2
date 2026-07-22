@@ -18,7 +18,9 @@ heartbeat + direct-nohup mode.
 | 27 | PatchDropout 0.5: train fwds keep 288/576 patch tokens (random per batch), RoPE cos/sin index-selected to match; eval full tokens; compile moved to encoder walk | 217.4 | −4.1, steps 1307→2748 (+110%), vram 26→13.8GB; cell_top1 DOWN 17.3→16.0 yet median better — throughput>classification again. Confirming |
 | 27b | confirm re-run | 215.4 | **KEEP** (217.35/215.39 — champion ≈215.4 @ 948fe2e, −2.8% vs 221.5) |
 | 28 | geocells 2048→4096 + PRED_TOPK 24 (+ geocell disk cache, det. cells) | 223.8 | discard (+8.4; acc@25km UP 2.9→3.4 + first nonzero acc@1km, but 4096-way CE too hard at 2750 steps — top1 10.6%. Cell count DONE at 8-min; revisit only at long budgets. Cache plumbing kept) |
-| 29 | FixRes: train 288px / eval 384px (324→162 kept tokens w/ dropout) | running | DeiT-III/FixRes: low train res + full eval res; expect ~+60% steps |
+| 29 | FixRes: train 288px / eval 384px (324→162 kept tokens w/ dropout) | 219.2 | discard (+3.8; 4410 steps (+60%) yet worse — STEP-SCALING EXHAUSTED past ~2750 steps; res loss nets negative now. acc@25 up again) |
+| 30 | LR ×2 (2e-4/2e-3) — steps doubled since LRs were tuned | 227.2 | discard (+11.8, clearly worse — LR sweep DONE, 1e-4/1e-3 frozen) |
+| 31 | Muon (NS-orthogonalized momentum, lr .02) on 2D head/trunk matrices; AdamW keeps LoRA+biases | running | per-step-quality family; <3k-step regime is Muon's home turf |
 
 ## Session 3 results are below.
 
