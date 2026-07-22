@@ -33,3 +33,6 @@ ae5c260	221.496372	25.5	keep	S4 baseline re-run of champion (221.5) — seed
 0000000	0.0	0.0	crash	S4 exp1a patch dropout — tf5.14 has .model not .layer; fixed, rerun
 71ee6c4	217.353437	13.8	keep	S4 exp1 PatchDropout 0.5 (train-only, rope-indexed): 221.5->217.4, steps 1307->2748, vram 26->13.8GB — confirming
 948fe2e	215.389469	13.8	keep	S4 exp1b CONFIRM PatchDropout: 215.4 — KEEP, new champion
+0000000	223.774630	13.8	discard	S4 exp28 geocells 4096+topk24: 223.8 (+8.4). acc@25 up but 4096-way CE too hard at 2750 steps (top1 10.6%) — cell-count sweep DONE at this budget
+0000000	219.157581	8.7	discard	S4 exp29 FixRes 288/384: 219.2 (+3.8). 4410 steps but worse — step-scaling exhausted past ~2750; res loss now nets negative
+0000000	227.152908	13.8	discard	S4 exp30 LRx2 (2e-4/2e-3): 227.2 (+11.8) — LR sweep DONE, 1e-4/1e-3 frozen

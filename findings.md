@@ -17,7 +17,8 @@ heartbeat + direct-nohup mode.
 | 26b | PatchDropout v1 (walk core.layer) | CRASH | tf 5.14 renamed: encoder module is core.model, not .layer (3-min crash, pre-clock) |
 | 27 | PatchDropout 0.5: train fwds keep 288/576 patch tokens (random per batch), RoPE cos/sin index-selected to match; eval full tokens; compile moved to encoder walk | 217.4 | −4.1, steps 1307→2748 (+110%), vram 26→13.8GB; cell_top1 DOWN 17.3→16.0 yet median better — throughput>classification again. Confirming |
 | 27b | confirm re-run | 215.4 | **KEEP** (217.35/215.39 — champion ≈215.4 @ 948fe2e, −2.8% vs 221.5) |
-| 28 | geocells 2048→4096 + PRED_TOPK 24 (+ geocell disk cache, det. cells) | running | attacks quantization floor (~250km mean cell radius at 2048) |
+| 28 | geocells 2048→4096 + PRED_TOPK 24 (+ geocell disk cache, det. cells) | 223.8 | discard (+8.4; acc@25km UP 2.9→3.4 + first nonzero acc@1km, but 4096-way CE too hard at 2750 steps — top1 10.6%. Cell count DONE at 8-min; revisit only at long budgets. Cache plumbing kept) |
+| 29 | FixRes: train 288px / eval 384px (324→162 kept tokens w/ dropout) | running | DeiT-III/FixRes: low train res + full eval res; expect ~+60% steps |
 
 ## Session 3 results are below.
 

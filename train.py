@@ -116,6 +116,13 @@ def haversine_km_t(lat1, lon1, lat2, lon2):
 # ---------------------------------------------------------------------------
 
 def build_geocells(train_df, n_cells, iters):
+    # Disk-cache per (n_cells, iters, n_points): identical cells for every run on this box
+    # (CUDA index_add_ is nondeterministic, so rebuilding each run adds tiny cell jitter).
+    from prepare import CACHE_DIR
+    _ck = os.path.join(CACHE_DIR, f"geocells_{n_cells}_{iters}_{len(train_df)}.pt")
+    if os.path.exists(_ck):
+        d = torch.load(_ck, map_location=device)
+        return d["centroids"], d["cell_lat"], d["cell_lon"]
     lat = torch.tensor(train_df["latitude"].to_numpy(), dtype=torch.float32, device=device)
     lon = torch.tensor(train_df["longitude"].to_numpy(), dtype=torch.float32, device=device)
     pts = latlon_to_unit(lat, lon)  # (N, 3)
@@ -133,7 +140,12 @@ def build_geocells(train_df, n_cells, iters):
         new[mask] = F.normalize(new[mask], dim=-1)
         centroids[mask] = new[mask]          # empty cells keep their seed
     cell_lat, cell_lon = unit_to_latlon(centroids)
-    return centroids.detach(), cell_lat.detach(), cell_lon.detach()
+    centroids, cell_lat, cell_lon = centroids.detach(), cell_lat.detach(), cell_lon.detach()
+    try:
+        torch.save({"centroids": centroids, "cell_lat": cell_lat, "cell_lon": cell_lon}, _ck)
+    except OSError:
+        pass
+    return centroids, cell_lat, cell_lon
 
 # ---------------------------------------------------------------------------
 # Dataset / dataloader (JPEG -> normalized 448 tensor; on CPU workers)
