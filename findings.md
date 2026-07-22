@@ -29,7 +29,21 @@ correct 4.65GB tar from this box (TAR_UPLOAD_OK). Estonia box: 116 MB/s HF, 60k 
 | 37 | country targets tau-smoothed (300km over country spherical centroids) instead of hard CE | 209.5 | best of session; confirming |
 | 37b | confirm re-run | 210.3 | **KEEP** (209.53/210.30 both beat 210.34/210.58 — champion ~209.9 @ 07bd934) |
 | 38 | PIGEON retrieval refinement v1: embed 60k train post-clock, snap to sim-weighted top-8 NN within top-5 cells, blend .5 | 222.6 | discard (+12.7 median BUT acc@25 3.97% best ever — snap fixes close cases, wrecks typical ones at top1=18%. One retune: sim-gated cluster-centroid version) |
-| 39 | semantic geocells (country-constrained k-means, largest-remainder allocation) | NEVER RAN | box force-stopped by Vast (credit exhausted); code ready in tree — RUN FIRST next session |
+| 39 | semantic geocells (country-constrained k-means, largest-remainder allocation) | 216.6 | discard (+2.4 vs Korea anchor 214.2 — neutral-to-worse; border alignment isn't the lever). Ran after credit top-up on Korea box 45534538 |
+| 40 | ANCHOR: champion re-run on Korea box | 214.2 | box reads +4 vs Estonia (209.5/210.3 there); all S5-afternoon comparisons vs 214.2. First country_acc: 44.6% |
+| 41 | ViT-H+ 0.84B @ bs48 | 211.2 | −2.9; mean 876 / acc@2500 93.4% / geoguessr 3836 ALL BEST-EVER at 1279 steps. Josef verdict: drop (too large for app target); capacity → tail quality banked as knowledge; confirm aborted |
+| 42 | H3-2122 merged cells AS FINE cells | 240.7 | discard (+26.5) BUT top1 25.7/top5 52.8/country 54.5 all records — quantization-floor lesson: balanced cells classify easier, guess coarser |
+| 43 | H3-2122 as EXTRA hier level (evidence not geometry) | 222.7 | discard (+8.5) — big aux vocab steals gradient regardless of wiring (matches subdivision). Cell-scheme chapter CLOSED at 8-min |
+| 44 | within-cell offset regression head (Josef's idea; shared per-cell tangent MLP, zero-init) | 219.9 | discard (+5.7) — within-cell position ≈ as hard as classification at 1500 steps; PARK for long budgets (needs converged selector; S1 exp4 was neutral at 396km for the same reason) |
+| 45 | PATCH_KEEP 0.5→0.6 (post-saturation: richer tokens > extra steps) | 213.0 | **KEEP** (−1.1, ≥1km rule; 1295 steps) — champion @ 1dfceb0. VRAM 31.0GB peak: knob FROZEN, no headroom |
+| 46a | GeM pooling (cls+GeM concat) @ bs96 | OOM | crash at warmup — 31GB champion + GeM activations |
+| 46b | GeM @ bs84 (memory-paired) | 212.1 | discard by 0.11km (−0.89 vs ≥1km rule); SSH-drop false-CRASH, score recovered from run.log. Panel BETTER (mean 950 best-ViT-L, acc2500 92.5, country 46.1) — ONE retune allowed |
+| 47 | LoRA r32/a64 (capacity, never swept) | 214.8 | discard (+1.8; steps 1295→1158 — capacity costs steps, doesn't pay; r16 FROZEN) |
+
+**Process rules (Josef, mid-session): no confirm re-runs; KEEP at ≥1 km improvement; report
+every result in chat immediately. ViT-L locked as backbone (mobile-app target: ~600MB fp16 /
+300MB int8 — ViT-H+ would be ~3x). EVAL_EVERY stays 250; no panorama tricks at eval (val is
+one view per panorama anyway — checked panoid: 2998 unique).**
 
 **Session pivot (Josef, mid-session): mandate changed to substantial structural swings, target
 median ≤100 km eventually. Extended +2h. Honest read: 100 km needs harness-level changes (more

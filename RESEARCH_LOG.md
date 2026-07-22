@@ -14,16 +14,14 @@ Objective: **`median_km`** (median great-circle error on the val split), **lower
 
 ## Current champion
 
-- **median_km:** ~209.9 vs a 212.2 box baseline (session 5; tau-country confirmed
-  209.53/210.30, on top of country-hier confirmed 210.34/210.58)
-- **train.py commit:** 07bd934 (branch autoresearch/2026-07-22b)
-- **one-line:** session-4 stack + **country-level geographic hierarchy** (country head w=0.5
-  wired into the fine posterior via majority-vote parents) + **tau-smoothed country targets**
-  (300km over country spherical centroids instead of hard CE). Tail collapsed: mean ~1000
-  (best ever), acc@2500 ~91.9%, top5 47.4% best ever.
-- **In-flight when the box died:** semantic geocells (country-constrained k-means fine cells,
-  PIGEON-style) — code is IN the working tree on the session branch, syntax-checked, never
-  scored. Run it first next time a box is up.
+- **median_km:** 213.0 on the Korea box whose champion anchor read 214.2 (Estonia box read
+  the same stack at ~209.9 — boxes differ by ~4 km; est. true champion ~208.8)
+- **train.py commit:** 1dfceb0 (branch autoresearch/2026-07-22b)
+- **one-line:** session-4 stack + **country-level hierarchy** (w=0.5, majority-vote parents)
+  + **tau-smoothed country targets** (300km) + **PATCH_KEEP 0.6** (post-saturation: richer
+  tokens beat extra steps; VRAM 31.0GB peak on 5090 — NO headroom, use 0.5 on smaller GPUs).
+- **Process rules now standing (Josef): NO confirm re-runs; KEEP at ≥1 km; report every run
+  in chat immediately; ViT-L locked (mobile-app target); EVAL_EVERY 250 fixed.**
 - prior: 221.5 @ ae5c260 = no-grad-ckpt + bs48×1 (32w) + 2048 geocells/topk16 + mode-seeking
   prediction (T=0.5, 1000km locality) + hier heads 64/512/2048 (log-space, w 0.25/0.5/1.0)
   + IMG 384 + EVAL_EVERY 250 + torch.compile(dynamic=True) with pre-clock warmup
@@ -70,6 +68,10 @@ _(each entry: the change, the median_km delta, and why it likely helped)_
 - **bs96×1** (215.4→209.6/210.1 CONFIRMED, session 4): PatchDropout's VRAM dividend spent on
   doubling the real batch. Steps 2750→1500 yet clearly better — step count SATURATES at this
   budget (~2750); past it, buy per-step quality (batch), not more steps. cell_top1 18.6% best.
+- **PATCH_KEEP 0.5→0.6** (214.2→213.0 on Korea anchor, session 5, ≥1km rule): post-saturation,
+  keeping 60% of patch tokens (1295 steps) beats 50% (1536 steps) — per-step token richness
+  now outbids step count. VRAM 31.0GB peak at bs96/5090: knob FROZEN, no headroom (pair any
+  memory-adding idea with a batch drop; GeM OOMed on top of this).
 - **Tau-smoothed country targets** (→209.53/210.30 CONFIRMED, session 5): country CE targets
   = softmax(-d(true, country_centroid)/300km) instead of hard one-hot — near-miss countries
   penalized less (HierLoc-lite distance-weighting). The ONE follow-up on the country win; both
@@ -139,6 +141,27 @@ _(each entry: what was tried, what happened, and the takeaway so it isn't retrie
   ONE retune allowed: sim-GATED + OPTICS-style cluster centroids + multiply-with-cell-probs
   (PIGEON's actual mechanism; their ablation: median 44.4→50.0 without it). Needs top1 much
   higher to be a median lever; keep it eval-time only.
+- **Semantic geocells / country-constrained k-means (S5)**: 216.6 (+2.4, ~neutral) — border
+  alignment isn't the lever at this budget.
+- **H3 merged cells (S5, from old neuroguessr repo artifacts)**: AS fine cells 240.7 (+26.5)
+  with top1 25.7/top5 52.8 RECORDS — balanced cells classify easier but guess coarser
+  (quantization floor). As an EXTRA hier level: 222.7 (+8.5) — any ~2k-way aux vocab steals
+  gradient (matches subdivision). Cell-scheme chapter CLOSED at 8-min: kmeans-2048 + 64/512
+  + country is the optimum. Mappings staged at CACHE_DIR/h3_to_class_*.json on future boxes
+  via old repo h3_utils/ if ever needed.
+- **Within-cell offset head (S5, Josef's idea)**: 219.9 (+5.7) — regressing position inside a
+  ~250km cell is as hard as the classification itself at 1500 steps; PARK for long budgets
+  (S1 exp4 was neutral for the same reason). Zero-init + tanh-clamp + per-cell RMS-radius
+  scaling implementation is in git history (S5).
+- **GeM pooling cls+concat (S5)**: 212.1 vs 213.0 — missed the ≥1km bar by 0.11km at bs84
+  (memory-paired after OOM at bs96). Panel BETTER (mean 950 best-ViT-L). ONE retune allowed:
+  GeM-replace instead of concat, or PATCH_KEEP 0.5 + bs96 to avoid the batch drop.
+- **LoRA r32/a64 (S5)**: 214.8 (+1.8) — steps 1295→1158; capacity costs steps and doesn't
+  pay. r16/a32 FROZEN.
+- **ViT-H+ 0.84B (S5)**: 211.2 (−2.9 vs anchor, would have KEPT under ≥1km rule) with mean
+  876 / acc@2500 93.4% / geoguessr 3836 ALL BEST-EVER — Josef dropped it deliberately (3x
+  inference RAM, mobile-app target). Knowledge: capacity buys the TAIL (coarse geography),
+  not the median. Right candidate if the mission ever stops caring about model size.
 
 ## Parked for LONG-budget runs (better per-step, worse per-second — revisit when --minutes grows)
 
@@ -257,8 +280,26 @@ _(anything about the box, dataset, VRAM ceilings, throughput, DINOv3 quirks, etc
 
 _(one dated block per session: dates, champion at start → end, headline results)_
 
-### 2026-07-22 (session 5, afternoon — mandate: aux heads + geographic hierarchy, then
-### structural swings toward ≤100km; ENDED EARLY: Vast credit ran out)
+### 2026-07-22 (session 5 part 2, after credit top-up — Korea box 45534538, $0.40/hr)
+- Anchor on this box: 214.2 (same stack Estonia read at ~209.9 — boxes differ ~4km; ALWAYS
+  re-anchor after a box change). End: **213.0** (1dfceb0) = est. ~208.8 Estonia-scale.
+- 8 scored runs + 2 OOMs: PATCH_KEEP 0.6 KEEP (−1.1); ViT-H+ 211.2 dropped by Josef (size);
+  semantic cells, H3-as-fine, H3-as-level, offset head, LoRA r32 discards; GeM missed by 0.11.
+- New val metric: country_acc (predicted cell's country vs true) — ViT-L ~44-46%, H3-fine
+  54.5%, PIGEON reports ~92% — the country gap is the clearest remaining signal deficit.
+- Infra: Vast CONFIRM PROMPT eats destroys silently (`input='y\n'` required — two "destroyed"
+  losers kept billing; always `vast.py ps` after destroys). SSH stream drop mid-exp shows as
+  CRASH while the run continues on the box — recover score from run/run.log. Old-repo assets
+  (h3 jsons) scp'd to CACHE_DIR + `pip install h3` on box. progress.png + analysis.ipynb
+  rewritten for median_km with session bands.
+- **Next-session queue:** 1) GeM retune (replace-not-concat @ bs96/keep0.5 — missed by 0.11!),
+  2) sim-gated cluster-centroid retrieval retune, 3) season/elevation SMALL aux heads (4-way
+  works, 2k-way doesn't), 4) HARNESS DECISION for ≤100km goal (Josef): AR_N_TRAIN 60k→150-300k
+  + --minutes 20-30 + optionally checkpoint chaining; original neuroguessr hit 194km with
+  1.2M imgs / 2h full-FT — data+budget IS the gap (we're at ~209-213 with 60k/8min).
+
+### 2026-07-22 (session 5 part 1 — mandate: aux heads + geographic hierarchy, then
+### structural swings toward ≤100km; PAUSED: Vast credit ran out)
 - Champion at start: 210.1 (box baseline 212.2) → at end: **~209.9** (07bd934); wins were
   tail-fixers: country-hier + tau-smoothed country targets (mean 1079→~1000 best ever).
 - Experiments: 11 runs (baseline, 2 keeps ×2 confirms each, subdivision discard, 448
