@@ -330,6 +330,23 @@ _(anything about the box, dataset, VRAM ceilings, throughput, DINOv3 quirks, etc
 
 ## Session history
 
+### 2026-07-22 — FULL-DATASET RUN (not a ratchet session): 209.5 -> 104.7 official
+- train_full.py @ master: champion stack, ALL 1,198,072 imgs (300k locs x 4 views), 3 epochs,
+  10,695 steps @ global bs336 (4x5090 Hungary $1.87/hr, bs84/GPU after NCCL-buffer OOM at 96),
+  5000 k-means cells (floor 34.2 km), step-based cosine, evals/100k samples, ckpts/200k + HF
+  mirror. 2.0h train, ~$5.6 all-in.
+- OFFICIAL full-val median 104.66 | best quick-subset 99.91 (<100!) | mean 455.6 | acc@200 70.6%
+  | acc@2500 96.9% | geoguessr 4286 | cell_top1 27.4%@5000. Beat original neuroguessr (194km,
+  same 1.2M imgs, full FT) by 46% with LoRA r16. Curve still descending at cutoff ->
+  epochs 4-5 via checkpoint chaining (run_full/ckpt_best.pt local + josefbednar/
+  neuroguessr-fullrun-ckpt) is the cheapest next win.
+- Infra: raw-bytes download = 1.2M imgs in 266s (~6.8k img/s); smoke test caught the DDP OOM;
+  W&B key must come from ~/.netrc for manual nohup launches (silent 'disabled' otherwise);
+  pkill self-match killed a relaunch shell (separate the reap from the run — again).
+- HARD INSTANCE RULES (Josef, permanent): no California, direct SSH only, 5-min
+  startup-or-destroy, time-boxed setup, race EU regions first.
+
+
 _(one dated block per session: dates, champion at start → end, headline results)_
 
 ### 2026-07-22 (session 5 part 2, after credit top-up — Korea box 45534538, $0.40/hr)
