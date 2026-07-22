@@ -127,18 +127,19 @@ def haversine_km_t(lat1, lon1, lat2, lon2):
 # Geocells: k-means on train coordinates (built fresh each run — modeling choice)
 # ---------------------------------------------------------------------------
 
-def build_geocells(train_df, n_cells, iters):
-    # Disk-cache per (n_cells, iters, n_points): identical cells for every run on this box
-    # (CUDA index_add_ is nondeterministic, so rebuilding each run adds tiny cell jitter).
+def build_geocells(train_df, n_cells, iters, seed=0):
+    # Disk-cache per (n_cells, iters, n_points[, seed]); seed!=0 gives a STAGGERED tessellation
+    # whose Voronoi boundaries don't align with seed 0 — the intersection is much finer.
     from prepare import CACHE_DIR
-    _ck = os.path.join(CACHE_DIR, f"geocells_{n_cells}_{iters}_{len(train_df)}.pt")
+    _sfx = "" if seed == 0 else f"_s{seed}"
+    _ck = os.path.join(CACHE_DIR, f"geocells_{n_cells}_{iters}_{len(train_df)}{_sfx}.pt")
     if os.path.exists(_ck):
         d = torch.load(_ck, map_location=device)
         return d["centroids"], d["cell_lat"], d["cell_lon"]
     lat = torch.tensor(train_df["latitude"].to_numpy(), dtype=torch.float32, device=device)
     lon = torch.tensor(train_df["longitude"].to_numpy(), dtype=torch.float32, device=device)
     pts = latlon_to_unit(lat, lon)  # (N, 3)
-    g = torch.Generator(device=device).manual_seed(0)
+    g = torch.Generator(device=device).manual_seed(seed)
     idx = torch.randperm(pts.size(0), generator=g, device=device)[:n_cells]
     centroids = pts[idx].clone()
     for _ in range(iters):
@@ -249,7 +250,8 @@ def normalize_batch(imgs_uint8):
 # ---------------------------------------------------------------------------
 
 class GeoModel(nn.Module):
-    def __init__(self, centroids, cell_lat, cell_lon, hier=(), cell_country=None, n_country=0):
+    def __init__(self, centroids, cell_lat, cell_lon, hier=(), cell_country=None, n_country=0,
+                 tess_b=None):
         super().__init__()
         from transformers import AutoModel
         from peft import LoraConfig, get_peft_model
@@ -276,6 +278,14 @@ class GeoModel(nn.Module):
             nn.Dropout(HEAD_DROPOUT),
         )
         self.fine_head = nn.Linear(HEAD_HIDDEN, N_CELLS)
+        # Staggered tessellation B: independent fine head on a different k-means seed; the
+        # combined readout mixes both centroid sets -> effective cells = Voronoi intersection.
+        self.fine_head_b = nn.Linear(HEAD_HIDDEN, N_CELLS) if tess_b is not None else None
+        if tess_b is not None:
+            cb, cblat, cblon = tess_b
+            self.register_buffer("centroids_b", cb)
+            self.register_buffer("cell_lat_b", cblat)
+            self.register_buffer("cell_lon_b", cblon)
         self.coarse_heads = nn.ModuleList([nn.Linear(HEAD_HIDDEN, c) for c in HIER_CELLS])
         self.country_head = nn.Linear(HEAD_HIDDEN, n_country) if n_country else None
         if cell_country is not None:
@@ -334,28 +344,37 @@ class GeoModel(nn.Module):
         if self.country_head is not None:
             country = self.country_head(h)
             comb = comb + F.log_softmax(country, dim=-1)[:, self.cell_country]
-        return comb, coarse, country
+        fine_b = self.fine_head_b(h) if self.fine_head_b is not None else None
+        return comb, coarse, country, fine_b
 
     def logits(self, pixel_values):
-        return self.head_logits(self.features(pixel_values).float())[0]
+        out = self.head_logits(self.features(pixel_values).float())
+        return out[0], out[3]
 
     @torch.no_grad()
     def predict_latlon(self, pixel_values, topk=PRED_TOPK, collect=None):
         """Mode-seeking: temperature-sharpened weights over top-k cells, restricted to the
         neighborhood of the top-1 cell, then prob-weighted spherical mean.
         collect: optional list; appends this batch's top-5 cell ids (diagnostics only)."""
-        logits = self.logits(pixel_values)
-        probs = F.softmax(logits.float() / PRED_TEMP, dim=-1)
-        k = min(topk, probs.size(-1))
-        w, idx = probs.topk(k, dim=-1)                     # (B, k)
+        logits_a, logits_b = self.logits(pixel_values)
+        probs = F.softmax(logits_a.float() / PRED_TEMP, dim=-1)
         if collect is not None:
-            collect.append(idx[:, :5].cpu())
-        # keep only cells near the argmax cell (kills cross-continent averaging)
-        d_top1 = haversine_km_t(self.cell_lat[idx[:, :1]], self.cell_lon[idx[:, :1]],
-                                self.cell_lat[idx], self.cell_lon[idx])   # (B, k)
+            collect.append(probs.topk(5, dim=-1).indices.cpu())
+        if logits_b is not None:   # union of both tessellations, half weight each
+            probs_b = F.softmax(logits_b.float() / PRED_TEMP, dim=-1)
+            probs = torch.cat([probs * 0.5, probs_b * 0.5], dim=-1)
+            all_lat = torch.cat([self.cell_lat, self.cell_lat_b])
+            all_lon = torch.cat([self.cell_lon, self.cell_lon_b])
+            all_cents = torch.cat([self.centroids, self.centroids_b])
+        else:
+            all_lat, all_lon, all_cents = self.cell_lat, self.cell_lon, self.centroids
+        k = min(2 * topk, probs.size(-1))
+        w, idx = probs.topk(k, dim=-1)                     # (B, k)
+        d_top1 = haversine_km_t(all_lat[idx[:, :1]], all_lon[idx[:, :1]],
+                                all_lat[idx], all_lon[idx])   # (B, k)
         w = w * (d_top1 <= PRED_RADIUS_KM)
         w = w / w.sum(dim=-1, keepdim=True).clamp(min=1e-9)
-        cents = self.centroids[idx]                        # (B, k, 3)
+        cents = all_cents[idx]                             # (B, k, 3)
         v = (w.unsqueeze(-1) * cents).sum(dim=1)           # (B, 3)
         return unit_to_latlon(v)
 
@@ -376,6 +395,8 @@ centroids, cell_lat, cell_lon = build_geocells(train_df, N_CELLS, KMEANS_ITERS)
 print(f"Geocells: {N_CELLS} (k-means, {KMEANS_ITERS} iters)")
 hier = [build_geocells(train_df, c, KMEANS_ITERS) for c in HIER_CELLS]
 print(f"Hierarchy: {HIER_CELLS} + {N_CELLS} (log-space combined)")
+TESS_B = build_geocells(train_df, N_CELLS, KMEANS_ITERS, seed=1)
+print(f"Staggered tessellation B: {N_CELLS} cells (seed 1)")
 
 # Geographic (semantic) coarse level: countries. Fine cell -> country by majority vote of
 # the train points assigned to that cell; empty cells get the global modal country.
@@ -401,14 +422,17 @@ with torch.no_grad():
 print(f"Countries: {N_COUNTRY} (majority-vote parents for {N_CELLS} cells)")
 
 model = GeoModel(centroids, cell_lat, cell_lon, hier,
-                 cell_country=CELL_COUNTRY, n_country=N_COUNTRY).to(device)
+                 cell_country=CELL_COUNTRY, n_country=N_COUNTRY, tess_b=TESS_B).to(device)
 model.trunk.to(torch.float32); model.fine_head.to(torch.float32)
+if model.fine_head_b is not None:
+    model.fine_head_b.to(torch.float32)
 model.coarse_heads.to(torch.float32)
 if model.country_head is not None:
     model.country_head.to(torch.float32)
 
 lora_params = [p for n, p in model.backbone.named_parameters() if p.requires_grad]
 head_params = (list(model.trunk.parameters()) + list(model.fine_head.parameters())
+               + list(model.fine_head_b.parameters())
                + list(model.coarse_heads.parameters())
                + (list(model.country_head.parameters()) if model.country_head is not None else []))
 n_train_params = sum(p.numel() for p in lora_params + head_params)
@@ -538,7 +562,9 @@ _wimgs, _, _, _ = next(data_iter)
 _x = normalize_batch(_wimgs)
 with autocast_ctx:
     _feats = model.features(_x)
-_logits, _, _ = model.head_logits(_feats.float())
+_logits, _, _, _fb = model.head_logits(_feats.float())
+if _fb is not None:
+    _logits = _logits + 0 * _fb.sum()
 _logits.mean().backward()                       # compile the backward graph too
 optimizer.zero_grad(set_to_none=True)
 model.eval()
@@ -568,10 +594,12 @@ try:
             blat = blat.to(device); blon = blon.to(device); bctry = bctry.to(device)
             with autocast_ctx:
                 feats = model.features(x)
-            logits, coarse_logits, country_logits = model.head_logits(feats.float())
+            logits, coarse_logits, country_logits, fine_b = model.head_logits(feats.float())
             tgt = soft_targets(blat, blon, cell_lat, cell_lon, SMOOTH_TAU_KM)
+            tgt_b = soft_targets(blat, blon, TESS_B[1], TESS_B[2], SMOOTH_TAU_KM)
+            loss_b = -(tgt_b * F.log_softmax(fine_b, dim=-1)).sum(dim=-1).mean()
             logp = F.log_softmax(logits, dim=-1)
-            loss = -(tgt * logp).sum(dim=-1).mean()
+            loss = -(tgt * logp).sum(dim=-1).mean() + loss_b
             for l, cl in enumerate(coarse_logits):
                 tgt_l = soft_targets(blat, blon, getattr(model, f"coarse_lat_{l}"),
                                      getattr(model, f"coarse_lon_{l}"), SMOOTH_TAU_KM)
