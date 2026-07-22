@@ -1,0 +1,125 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>neuroguessr-2 — where is this?</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  body { font: 14px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+         background: #0b0e13; color: #e5e7eb; height: 100vh; display: flex; }
+  #panel { width: 340px; min-width: 340px; padding: 16px; overflow-y: auto;
+           border-right: 1px solid #1f2937; display: flex; flex-direction: column; gap: 12px; }
+  #map { flex: 1; background: #0b0e13; }
+  h1 { font-size: 16px; } h1 span { color: #34d399; }
+  .hint { color: #6b7280; font-size: 12px; }
+  #drop { border: 2px dashed #374151; border-radius: 10px; padding: 18px 12px; text-align: center;
+          color: #9ca3af; cursor: pointer; transition: border-color .15s; }
+  #drop.armed { border-color: #34d399; color: #34d399; }
+  #preview { width: 100%; border-radius: 10px; display: none; }
+  .card { background: #111722; border: 1px solid #1f2937; border-radius: 10px; padding: 12px; }
+  .big { font-size: 22px; color: #fff; font-weight: 600; }
+  .row { display: flex; justify-content: space-between; margin: 3px 0; }
+  .muted { color: #6b7280; }
+  .bar { height: 8px; background: #0f1419; border-radius: 999px; overflow: hidden; margin-top: 6px; }
+  .fill { height: 100%; background: linear-gradient(90deg,#f59e0b,#34d399); width: 0%; }
+  #status { color: #f59e0b; min-height: 18px; }
+  .ctry { display: flex; justify-content: space-between; padding: 2px 0; }
+  .ctry b { color: #e5e7eb; }
+  a { color: #34d399; }
+</style>
+</head>
+<body>
+<div id="panel">
+  <h1>neuroguessr-2 <span>· full-run model</span></h1>
+  <div class="hint">Paste an image (<b>Ctrl+V</b>), drop a file, or click below.
+    Center-cropped to square → 384×384, same as training.</div>
+  <div id="drop">📋 paste / drop / click</div>
+  <input id="file" type="file" accept="image/*" style="display:none">
+  <img id="preview">
+  <div id="status"></div>
+  <div class="card" id="result" style="display:none">
+    <div class="row"><span class="muted">guess</span><span class="big" id="coords"></span></div>
+    <div class="row"><span class="muted">regional confidence</span><span id="conf"></span></div>
+    <div class="bar"><div class="fill" id="confbar"></div></div>
+    <div class="row" style="margin-top:8px"><span class="muted">50% of belief within</span><span id="r50"></span></div>
+    <div class="row"><span class="muted">90% of belief within</span><span id="r90"></span></div>
+    <div class="row"><span class="muted">inference</span><span id="ms"></span></div>
+    <div style="margin-top:8px" id="countries"></div>
+  </div>
+  <div class="hint">Marker = prediction · rings = 50% / 90% belief radius · dots = top geocells
+    (size ∝ probability). Model: DINOv3 ViT-L + LoRA, 5000 cells, val median ~100 km.</div>
+</div>
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const map = L.map('map', { worldCopyJump: true }).setView([25, 10], 2);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+  { attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 18 }).addTo(map);
+
+let layer = L.layerGroup().addTo(map);
+const $ = id => document.getElementById(id);
+
+function setStatus(t) { $('status').textContent = t; }
+
+async function locate(blob) {
+  $('preview').src = URL.createObjectURL(blob);
+  $('preview').style.display = 'block';
+  $('result').style.display = 'none';
+  setStatus('locating… (CPU, a few seconds)');
+  const fd = new FormData();
+  fd.append('file', blob, 'img.png');
+  let r;
+  try { r = await fetch('/predict', { method: 'POST', body: fd }); }
+  catch (e) { setStatus('server unreachable — is server.py running?'); return; }
+  if (!r.ok) { setStatus('error: ' + (await r.text()).slice(0, 200)); return; }
+  const d = await r.json();
+  setStatus('');
+  layer.clearLayers();
+
+  d.cells.forEach(c => L.circleMarker([c.lat, c.lon], {
+      radius: 3 + 22 * Math.sqrt(c.p), color: '#f59e0b', weight: 1,
+      fillColor: '#f59e0b', fillOpacity: 0.25 })
+    .bindTooltip((100 * c.p).toFixed(1) + '%').addTo(layer));
+  L.circle([d.lat, d.lon], { radius: d.r90_km * 1000, color: '#375a4f', weight: 1, fill: false })
+    .addTo(layer);
+  L.circle([d.lat, d.lon], { radius: d.r50_km * 1000, color: '#34d399', weight: 1.5, fill: false })
+    .addTo(layer);
+  L.marker([d.lat, d.lon]).bindPopup(
+      `${d.lat.toFixed(4)}, ${d.lon.toFixed(4)}<br>conf ${(100 * d.confidence).toFixed(0)}%`)
+    .addTo(layer).openPopup();
+  map.flyTo([d.lat, d.lon], Math.max(3, Math.round(9 - Math.log2(Math.max(d.r90_km, 8) / 10))),
+            { duration: 1.2 });
+
+  $('coords').textContent = d.lat.toFixed(3) + ', ' + d.lon.toFixed(3);
+  $('conf').textContent = (100 * d.confidence).toFixed(1) + '%';
+  $('confbar').style.width = Math.min(100, 100 * d.confidence) + '%';
+  $('r50').textContent = d.r50_km.toFixed(0) + ' km';
+  $('r90').textContent = d.r90_km.toFixed(0) + ' km';
+  $('ms').textContent = d.time_ms + ' ms';
+  $('countries').innerHTML = d.countries.map(c =>
+      `<div class="ctry"><b>${c.code}</b><span>${(100 * c.p).toFixed(1)}%</span></div>`).join('');
+  $('result').style.display = 'block';
+}
+
+document.addEventListener('paste', e => {
+  for (const item of e.clipboardData.items)
+    if (item.type.startsWith('image/')) { locate(item.getAsFile()); return; }
+  setStatus('clipboard has no image');
+});
+const drop = $('drop');
+drop.onclick = () => $('file').click();
+$('file').onchange = e => e.target.files[0] && locate(e.target.files[0]);
+['dragover', 'dragenter'].forEach(ev => document.addEventListener(ev, e => {
+  e.preventDefault(); drop.classList.add('armed'); }));
+['dragleave', 'drop'].forEach(ev => document.addEventListener(ev, e => {
+  e.preventDefault(); if (ev === 'drop' && e.dataTransfer.files[0]) locate(e.dataTransfer.files[0]);
+  drop.classList.remove('armed'); }));
+window.addEventListener('load', () => fetch('/health').then(r => r.json())
+  .then(h => setStatus(`model ready on ${h.device} · best val median ${h.best_val_median_km.toFixed(1)} km`))
+  .catch(() => setStatus('server not responding')));
+</script>
+</body>
+</html>
