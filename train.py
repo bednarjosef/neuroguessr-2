@@ -56,8 +56,8 @@ PATCH_KEEP = 0.5               # PatchDropout/FLIP: fraction of patch tokens kep
                                # index-selected with the same mask so positions stay correct
 
 # Optimization
-DEVICE_BATCH_SIZE = 48         # exp14: better per-step than 24x2 but 13% slower uncompiled;
-GRAD_ACCUM = 1                 # retry now that compile bought the throughput back
+DEVICE_BATCH_SIZE = 96         # exp S4.6: PatchDropout halved VRAM (13.8GB @ 48) — double the
+GRAD_ACCUM = 1                 # real batch; steps saturated, so buy per-step quality instead
 LORA_LR = 1e-4
 HEAD_LR = 1e-3
 WEIGHT_DECAY = 0.05

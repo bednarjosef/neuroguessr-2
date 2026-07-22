@@ -20,7 +20,8 @@ heartbeat + direct-nohup mode.
 | 28 | geocells 2048→4096 + PRED_TOPK 24 (+ geocell disk cache, det. cells) | 223.8 | discard (+8.4; acc@25km UP 2.9→3.4 + first nonzero acc@1km, but 4096-way CE too hard at 2750 steps — top1 10.6%. Cell count DONE at 8-min; revisit only at long budgets. Cache plumbing kept) |
 | 29 | FixRes: train 288px / eval 384px (324→162 kept tokens w/ dropout) | 219.2 | discard (+3.8; 4410 steps (+60%) yet worse — STEP-SCALING EXHAUSTED past ~2750 steps; res loss nets negative now. acc@25 up again) |
 | 30 | LR ×2 (2e-4/2e-3) — steps doubled since LRs were tuned | 227.2 | discard (+11.8, clearly worse — LR sweep DONE, 1e-4/1e-3 frozen) |
-| 31 | Muon (NS-orthogonalized momentum, lr .02) on 2D head/trunk matrices; AdamW keeps LoRA+biases | running | per-step-quality family; <3k-step regime is Muon's home turf |
+| 31 | Muon (NS-orthogonalized momentum, lr .02) on 2D head/trunk matrices; AdamW keeps LoRA+biases | 241.4 | discard (+26 — lr .02 way too hot for this head/loss; retry only at ≤5e-3, low priority) |
+| 32 | bs96×1 (PatchDropout freed VRAM; steps saturated → buy per-step quality via bigger real batch) | running | LR kept 1e-4/1e-3 (LR×2 already ruled out) |
 
 ## Session 3 results are below.
 
