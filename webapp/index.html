@@ -48,16 +48,24 @@
     <div class="row"><span class="muted">inference</span><span id="ms"></span></div>
     <div style="margin-top:8px" id="countries"></div>
   </div>
-  <div class="hint">Marker = prediction · rings = 50% / 90% belief radius · dots = top geocells
-    (size ∝ probability). Model: DINOv3 ViT-L + LoRA, 5000 cells, val median ~100 km.</div>
+  <div class="hint">Pin = prediction. Model: DINOv3 ViT-L + LoRA, 5000 cells, val median ~100 km.</div>
 </div>
 <div id="map"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
 <script>
 const map = L.map('map', { worldCopyJump: true }).setView([25, 10], 2);
 L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
   { attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 18 }).addTo(map);
+// Bright country borders overlay (vector, independent of the basemap's faint lines)
+fetch('https://cdn.jsdelivr.net/npm/world-atlas@2.0.2/countries-110m.json')
+  .then(r => r.json())
+  .then(topo => {
+    const geo = topojson.feature(topo, topo.objects.countries);
+    L.geoJSON(geo, { style: { color: '#8fb3c7', weight: 1.1, opacity: 0.75, fill: false } })
+      .addTo(map);
+  }).catch(() => {});
 
 let layer = L.layerGroup().addTo(map);
 const $ = id => document.getElementById(id);
@@ -79,17 +87,7 @@ async function locate(blob) {
   setStatus('');
   layer.clearLayers();
 
-  d.cells.forEach(c => L.circleMarker([c.lat, c.lon], {
-      radius: 3 + 22 * Math.sqrt(c.p), color: '#f59e0b', weight: 1,
-      fillColor: '#f59e0b', fillOpacity: 0.25 })
-    .bindTooltip((100 * c.p).toFixed(1) + '%').addTo(layer));
-  L.circle([d.lat, d.lon], { radius: d.r90_km * 1000, color: '#375a4f', weight: 1, fill: false })
-    .addTo(layer);
-  L.circle([d.lat, d.lon], { radius: d.r50_km * 1000, color: '#34d399', weight: 1.5, fill: false })
-    .addTo(layer);
-  L.marker([d.lat, d.lon]).bindPopup(
-      `${d.lat.toFixed(4)}, ${d.lon.toFixed(4)}<br>conf ${(100 * d.confidence).toFixed(0)}%`)
-    .addTo(layer).openPopup();
+  L.marker([d.lat, d.lon]).addTo(layer);
   map.flyTo([d.lat, d.lon], Math.max(3, Math.round(9 - Math.log2(Math.max(d.r90_km, 8) / 10))),
             { duration: 1.2 });
 

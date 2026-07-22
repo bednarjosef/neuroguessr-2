@@ -180,7 +180,8 @@ def predict(img: Image.Image) -> dict:
             logits = model.head_logits(model.features(x).float())[0]
     else:
         logits = model.head_logits(model.features(x).float())[0]
-    p = F.softmax(logits.float() / PRED_TEMP, dim=-1)        # (C,) sharpened posterior
+    p = F.softmax(logits.float() / PRED_TEMP, dim=-1)        # sharpened — ONLY for the guess
+    p_hon = F.softmax(logits.float(), dim=-1)                # honest posterior — for confidence
 
     # Prediction: mode-seeking spherical mean (same rule as training/eval)
     w, idx = p.topk(PRED_TOPK)
@@ -192,28 +193,30 @@ def predict(img: Image.Image) -> dict:
     plat, plon = unit_to_latlon(v)
     plat, plon = float(plat[0]), float(plon[0])
 
-    # Regional confidence: total posterior mass within PRED_RADIUS of the top-1 cell
+    # Regional confidence: UNsharpened posterior mass within 250 km of the top-1 cell.
+    # (The T=0.5 sharpening used for the guess squares probabilities toward the mode and
+    # saturates near 100% — fine for picking a point, misleading as a belief statement.)
     d_all = haversine_km_t(model.cell_lat[idx[:1]], model.cell_lon[idx[:1]],
                            model.cell_lat, model.cell_lon)
-    conf = float(p[d_all <= PRED_RADIUS_KM].sum())
+    conf = float(p_hon[d_all <= 250.0].sum())
 
-    # r50 / r90: radius around the *prediction* containing 50% / 90% of posterior mass
+    # r50 / r90: radius around the *prediction* containing 50% / 90% of honest posterior mass
     d_pred = haversine_km_t(torch.tensor([plat], device=device),
                             torch.tensor([plon], device=device),
                             model.cell_lat, model.cell_lon)
     ds, order = d_pred.sort()
-    cum = p[order].cumsum(0)
+    cum = p_hon[order].cumsum(0)
     r50 = float(ds[int((cum >= 0.5).nonzero()[0])]) if float(cum[-1]) >= 0.5 else float(ds[-1])
     r90 = float(ds[int((cum >= 0.9).nonzero()[0])]) if float(cum[-1]) >= 0.9 else float(ds[-1])
 
-    # Country posterior: aggregate cell mass by the cell->country map
-    cp = torch.zeros(len(COUNTRIES), device=device).index_add_(0, model.cell_country, p)
+    # Country posterior: aggregate honest cell mass by the cell->country map
+    cp = torch.zeros(len(COUNTRIES), device=device).index_add_(0, model.cell_country, p_hon)
     cw, ci = cp.topk(5)
     countries = [{"code": COUNTRIES[int(i)], "p": round(float(x), 4)}
                  for x, i in zip(cw, ci) if float(x) > 0.005]
 
-    # Top cells for the map (display only)
-    tw, ti = p.topk(24)
+    # Top cells (kept in the API for future use; the UI no longer draws them)
+    tw, ti = p_hon.topk(24)
     cells = [{"lat": round(float(model.cell_lat[int(i)]), 4),
               "lon": round(float(model.cell_lon[int(i)]), 4),
               "p": round(float(x), 5)}
