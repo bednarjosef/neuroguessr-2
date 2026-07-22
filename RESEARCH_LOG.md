@@ -14,11 +14,13 @@ Objective: **`median_km`** (median great-circle error on the val split), **lower
 
 ## Current champion
 
-- **median_km:** 210.1 (confirmed twice: 209.61 / 210.11, session 4)
-- **train.py commit:** 63e090c (branch autoresearch/2026-07-22, = master)
-- **one-line:** session-3 stack + **PatchDropout 0.5** (train forwards keep a random half of
-  patch tokens, RoPE cos/sin index-selected to match; eval uses all tokens; compile targets
-  the encoder walk) + **bs96×1** (the freed VRAM spent on batch; 1500 steps, 25.8GB).
+- **median_km:** ~210.5 vs a 212.2 box baseline (session 5, confirmed 210.34/210.58; S4's
+  210.1 restated within noise on the S5 box)
+- **train.py commit:** 39d8efb (branch autoresearch/2026-07-22b)
+- **one-line:** session-4 stack + **country-level geographic hierarchy** (hard-CE country head
+  w=0.5, log-softmax broadcast onto fine cells via majority-vote cell→country parents).
+  Median barely moved but the tail collapsed: mean 1079→998 (best ever), acc@2500 91.9%,
+  top5 47.4% best ever.
 - prior: 221.5 @ ae5c260 = no-grad-ckpt + bs48×1 (32w) + 2048 geocells/topk16 + mode-seeking
   prediction (T=0.5, 1000km locality) + hier heads 64/512/2048 (log-space, w 0.25/0.5/1.0)
   + IMG 384 + EVAL_EVERY 250 + torch.compile(dynamic=True) with pre-clock warmup
@@ -65,6 +67,11 @@ _(each entry: the change, the median_km delta, and why it likely helped)_
 - **bs96×1** (215.4→209.6/210.1 CONFIRMED, session 4): PatchDropout's VRAM dividend spent on
   doubling the real batch. Steps 2750→1500 yet clearly better — step count SATURATES at this
   budget (~2750); past it, buy per-step quality (batch), not more steps. cell_top1 18.6% best.
+- **Country-level geographic hierarchy** (212.2→210.34/210.58 CONFIRMED, session 5): 115-way
+  hard-CE country head (w=0.5) + log_softmax(country) added onto fine logits via majority-vote
+  fine-cell→country parents (empty cells → global mode). Median −1.7 (small) but mean −81 and
+  acc@2500 +1.1pp — it fixes wrong-region mass, exactly like the k-means hier win. Semantic
+  supervision wired INTO the combine works where pure aux losses (S3) failed.
 - **Geocell disk cache** (session 4, plumbing not a win): k-means cells cached per
   (n_cells,iters,npts) in CACHE_DIR — deterministic cells across runs (CUDA index_add_ is
   nondeterministic). Josef asked for this; keep it.
