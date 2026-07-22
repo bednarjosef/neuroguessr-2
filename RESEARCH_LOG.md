@@ -14,11 +14,14 @@ Objective: **`median_km`** (median great-circle error on the val split), **lower
 
 ## Current champion
 
-- **median_km:** 221.5 (confirmed twice: 221.47 / 221.56, session 3)
-- **train.py commit:** ae5c260 (branch autoresearch/2026-07-21c, = master)
-- **one-line:** no-grad-ckpt + **bs48×1** (32w) + 2048 geocells/topk16 + mode-seeking prediction
-  (T=0.5, 1000km locality) + hier heads 64/512/2048 (log-space, w 0.25/0.5/1.0) + IMG 384
-  + EVAL_EVERY 250 + **torch.compile(backbone, dynamic=True) with pre-clock warmup**
+- **median_km:** 215.4 (confirmed twice: 217.35 / 215.39, session 4)
+- **train.py commit:** 948fe2e (branch autoresearch/2026-07-22)
+- **one-line:** session-3 stack + **PatchDropout 0.5** (train forwards keep a random half of
+  patch tokens, RoPE cos/sin index-selected to match; eval uses all tokens; compile targets
+  the encoder walk). Steps 1307→2750 (+110%), VRAM 26→13.8GB.
+- prior: 221.5 @ ae5c260 = no-grad-ckpt + bs48×1 (32w) + 2048 geocells/topk16 + mode-seeking
+  prediction (T=0.5, 1000km locality) + hier heads 64/512/2048 (log-space, w 0.25/0.5/1.0)
+  + IMG 384 + EVAL_EVERY 250 + torch.compile(dynamic=True) with pre-clock warmup
 - **full metric panel:** mean_km ~1094–1124 · acc@200km 46.7% · acc@2500km ~91% · geoguessr
   ~3722 · val cell_top1 16.4–17.7% · top5 45.8–46.3% · ~1168 steps/8min · vram 26GB (5090-only:
   would OOM a 24GB 4090 — drop to bs24×2 there)
@@ -52,6 +55,13 @@ _(each entry: the change, the median_km delta, and why it likely helped)_
   is compiled → +14% steps (1205 vs 1057), cell_top1 15.4→17.4%. Costs ~6-10 min extra wall per
   run (first run on a box slowest; inductor cache helps after). dynamic=True + multi-shape eval
   warmup prevents recompile stalls during quick evals.
+
+- **PatchDropout 0.5** (221.5→217.4/215.4 CONFIRMED, session 4): drop a random 50% of patch
+  tokens in TRAIN forwards only (index-select hidden-state patch slice AND RoPE cos/sin with
+  the same mask; prefix cls+register tokens exempt); eval keeps all tokens. +110% steps,
+  VRAM halved to 13.8GB. cell_top1 slightly down, median clearly up — throughput converts.
+  tf 5.14 note: encoder module is `core.model` (DINOv3ViTEncoder, called as `enc(hs, (cos,sin))`),
+  NOT `.layer`. Freed VRAM opens bs96 as a follow-up (untried).
 
 ## Dead ends & mistakes (tried, did NOT help or broke — do NOT repeat)
 

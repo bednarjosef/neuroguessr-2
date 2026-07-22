@@ -13,6 +13,11 @@ heartbeat + direct-nohup mode.
 
 | # | idea | median_km | verdict |
 |---|------|-----------|---------|
+| 26 | baseline re-run (ae5c260 champion) | 221.5 | champion seed (=221.5 exactly; 1307 steps, 26GB) |
+| 26b | PatchDropout v1 (walk core.layer) | CRASH | tf 5.14 renamed: encoder module is core.model, not .layer (3-min crash, pre-clock) |
+| 27 | PatchDropout 0.5: train fwds keep 288/576 patch tokens (random per batch), RoPE cos/sin index-selected to match; eval full tokens; compile moved to encoder walk | 217.4 | −4.1, steps 1307→2748 (+110%), vram 26→13.8GB; cell_top1 DOWN 17.3→16.0 yet median better — throughput>classification again. Confirming |
+| 27b | confirm re-run | 215.4 | **KEEP** (217.35/215.39 — champion ≈215.4 @ 948fe2e, −2.8% vs 221.5) |
+| 28 | geocells 2048→4096 + PRED_TOPK 24 (+ geocell disk cache, det. cells) | running | attacks quantization floor (~250km mean cell radius at 2048) |
 
 ## Session 3 results are below.
 
