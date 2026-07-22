@@ -364,7 +364,7 @@ def soft_targets(true_lat, true_lon, cell_lat, cell_lon, tau_km):
 
 _, train_df = load_index("train")
 print(f"Train pool: {len(train_df)} images | Backbone: {MODEL_NAME} @ {IMG_SIZE}px")
-centroids, cell_lat, cell_lon = build_semantic_geocells(train_df, N_CELLS, KMEANS_ITERS)
+centroids, cell_lat, cell_lon = build_geocells(train_df, N_CELLS, KMEANS_ITERS)
 print(f"Geocells: {N_CELLS} (k-means, {KMEANS_ITERS} iters)")
 hier = [build_geocells(train_df, c, KMEANS_ITERS) for c in HIER_CELLS]
 print(f"Hierarchy: {HIER_CELLS} + {N_CELLS} (log-space combined)")
@@ -445,17 +445,24 @@ with torch.no_grad():
                         cell_lat.unsqueeze(0), cell_lon.unsqueeze(0))
     VAL_TRUE_CELLS = _d.argmin(dim=1).cpu()               # (N_val,)
     del _d
+# True country of every val row (codes unseen in train map to -1 = never correct), and the
+# predicted-cell -> country map on CPU: country_acc = country of predicted top-1 cell matches.
+VAL_TRUE_COUNTRY = torch.tensor(_val_df["country_code"].fillna("??").astype(str)
+                                .map(lambda c: C2I.get(c, -1)).to_numpy(dtype=np.int64))
+CELL_COUNTRY_CPU = CELL_COUNTRY.cpu()
 
 
 def val_cell_metrics(collected):
-    """Top-1/5 cell accuracy + chance-normalized lift from collected top-5 ids."""
+    """Top-1/5 cell accuracy + lift + country accuracy from collected top-5 ids."""
     if not collected:
         return {}
     top5 = torch.cat(collected)                            # (n, 5), eval row order
     true = VAL_TRUE_CELLS[:top5.size(0)]
     top1 = (top5[:, 0] == true).float().mean().item()
     top5a = (top5 == true.unsqueeze(1)).any(dim=1).float().mean().item()
-    return {"cell_top1": top1, "cell_top5": top5a,
+    country_acc = (CELL_COUNTRY_CPU[top5[:, 0]]
+                   == VAL_TRUE_COUNTRY[:top5.size(0)]).float().mean().item()
+    return {"cell_top1": top1, "cell_top5": top5a, "country_acc": country_acc,
             "cell_top1_lift": top1 * N_CELLS, "cell_top5_lift": top5a * N_CELLS / 5}
 
 
@@ -468,7 +475,8 @@ def quick_eval(tag, step):
     print(f"\n[{tag}] median_km={m['median_km']:.1f} mean_km={m['mean_km']:.1f} "
           f"acc@25km={m['acc_25km']*100:.1f}% acc@200km={m['acc_200km']*100:.1f}% "
           f"acc@2500km={m['acc_2500km']*100:.1f}% geoguessr={m['geoguessr_score']:.0f} "
-          f"cell_top1={cm.get('cell_top1', 0)*100:.1f}% (lift {cm.get('cell_top1_lift', 0):.0f}x)",
+          f"cell_top1={cm.get('cell_top1', 0)*100:.1f}% (lift {cm.get('cell_top1_lift', 0):.0f}x) "
+          f"country={cm.get('country_acc', 0)*100:.1f}%",
           flush=True)
     if wandb_run is not None:
         wandb.log({f"val/{k}": v for k, v in {**m, **cm}.items()}, step=step)

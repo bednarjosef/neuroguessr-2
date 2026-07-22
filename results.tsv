@@ -48,3 +48,4 @@ ae5c260	221.496372	25.5	keep	S4 baseline re-run of champion (221.5) — seed
 792e9a9	209.526274	25.8	keep	S5 exp5 tau-smoothed country targets (300km over country centroids): 209.5 best of session — confirming
 07bd934	210.295824	25.8	keep	S5 exp5b confirm: 209.53/210.30 both beat hard-CE champion — tau-country KEEP, champion ~209.9
 0000000	222.606257	25.8	discard	S5 exp6 retrieval refinement v1 (top8-NN blend .5 in top5 cells): 222.6 (+12.7) BUT acc@25 3.97% best ever — snap helps close cases, hurts median at top1=18%. One retune later: sim-gated cluster-centroid version
+0000000	216.616442	25.7	discard	S5 exp8 semantic geocells (country-constrained kmeans): 216.6 vs ~209.9 Estonia champion (+6.7, pending same-box anchor); top1 16.3 down; first country_acc reading 46.1%
