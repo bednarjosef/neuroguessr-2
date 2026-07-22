@@ -387,6 +387,26 @@ smooth_loss = 0.0
 data_iter = iter(train_loader)
 epoch = 1
 
+# torch.compile the backbone — the compile cost is paid HERE, before start_training_clock(),
+# so the whole 480s wall-alarm window runs compiled steps. dynamic=True + multi-shape eval
+# warmup below prevents recompile stalls inside the alarm (eval sees partial last batches).
+model.backbone = torch.compile(model.backbone, dynamic=True)
+print("compile warmup (before the training clock)…", flush=True)
+_t_c = time.time()
+_wimgs, _, _ = next(data_iter)
+_x = normalize_batch(_wimgs)
+with autocast_ctx:
+    _feats = model.features(_x)
+_logits, _ = model.head_logits(_feats.float())
+_logits.mean().backward()                       # compile the backward graph too
+optimizer.zero_grad(set_to_none=True)
+model.eval()
+with torch.no_grad(), autocast_ctx:
+    model.features(_x[:16]); model.features(_x[:7])   # eval-mode + varied shapes
+model.train()
+del _wimgs, _x, _feats, _logits
+print(f"compile warmup done in {time.time()-_t_c:.0f}s", flush=True)
+
 # Eval BEFORE any training (step 0) so every run has an untrained baseline point.
 quick_eval("step 0", 0)
 
