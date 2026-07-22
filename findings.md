@@ -1,5 +1,32 @@
 # Findings — autoresearch sessions (image geolocalization, median_km ↓)
 
+## Session 5 — 2026-07-22 (starts from champion 210.1 @ 63e090c; 3h; mandate: aux heads +
+## better/geographic hierarchy first, then other stuff)
+
+Plan: 1. country-level geographic hierarchy (hard-CE aux wired into the log-space combine via
+majority-vote fine-cell→country parents), 2. subdivision level / deeper hierarchy, 3. IMG 448
++ PatchDropout 0.5 (post-saturation: buy per-step quality; scout: PatchDropout ablation says
+half tokens ≈ free), 4. distance-weighted negatives on coarse CE (HierLoc-lite), 5. PATCH_KEEP
+0.4/0.6 (one allowed follow-up). Scout notes: PIGEON bakes admin structure into CELL
+CONSTRUCTION (semantic geocells), HierLoc gets 2x median cut from entity hierarchy; GeoRanker
+pairwise ranking loss = denser early gradient (medium confidence).
+
+Infra: offer-id rent is RACY (ids churn between search and create — 4 failed rents); fixed by
+find+create in ONE process. Two dud hosts wasted ~35 min (Virginia proxy-only SSH unreachable;
+Canada wedged 10 min in docker build) → race-rent 3 regional candidates in parallel, keep first
+with working SSH (Estonia won in 2 min), destroy losers. Cache tar on HF was INCOMPLETE all
+along (val only, no train!) — every "2-min tar setup" actually streamed; rebuilt + re-uploaded
+correct 4.65GB tar from this box (TAR_UPLOAD_OK). Estonia box: 116 MB/s HF, 60k train in 409s.
+
+| # | idea | median_km | verdict |
+|---|------|-----------|---------|
+| 33 | baseline re-run (63e090c champion) | 212.2 | champion seed (=210.1 within noise; 1484 steps, 25.8GB) |
+| 34 | country-level geographic hier: hard-CE (w .5) country head + log-softmax broadcast onto fine cells via majority-vote parents (156-country level above 64/512/2048) | 210.3 | −1.9 marginal BUT the right panel signature: mean 1079→1019, acc@2500 90.8→91.8, acc@750 +1.2pp, top5 47.1% best ever. Confirming |
+
+## Champion (end of session 4) — see below for session-4 details
+
+- **~210 km** @ 63e090c (confirmed 209.61/210.11): session-3 stack + PatchDropout 0.5 + bs96×1.
+
 ## Session 4 — 2026-07-22 (starts from champion 221.5 @ ae5c260, 3h, mandate: BIG swings)
 
 Plan (scout-refreshed): 1. PatchDropout 50% (FLIP/PatchDropout — drop patch tokens in train

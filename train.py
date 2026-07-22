@@ -42,6 +42,8 @@ GRAD_CHECKPOINT = False   # bs24: activations fit without the ~30% recompute tax
 # logits are added (log-space) onto the fine cells at prediction, fixing wrong-region errors.
 HIER_CELLS = [64, 512]         # coarse levels (fine level is N_CELLS)
 HIER_LOSS_W = [0.25, 0.5]      # per-coarse-level CE weight (fine CE has weight 1.0)
+COUNTRY_LOSS_W = 0.5           # geographic (semantic) coarse level: hard-CE on country_code;
+                               # its logits broadcast onto fine cells via majority-vote parents
 N_CELLS = 2048
 KMEANS_ITERS = 25
 SMOOTH_TAU_KM = 75.0
@@ -158,6 +160,9 @@ class GeoDataset(Dataset):
         self.lat = self.df["latitude"].to_numpy(dtype=np.float32)
         self.lon = self.df["longitude"].to_numpy(dtype=np.float32)
         self.paths = self.df["path"].tolist()
+        # country index per row (C2I is the global code->index map built from the train split)
+        self.country = (self.df["country_code"].fillna("??").astype(str)
+                        .map(lambda c: C2I.get(c, 0)).to_numpy(dtype=np.int64))
 
     def __len__(self):
         return len(self.paths)
@@ -166,14 +171,15 @@ class GeoDataset(Dataset):
         from PIL import Image
         img = open_image(self.img_dir, self.paths[i]).resize((self.size, self.size), Image.BICUBIC)
         arr = torch.from_numpy(np.asarray(img, dtype=np.uint8)).permute(2, 0, 1)  # uint8 CHW
-        return arr, self.lat[i], self.lon[i]
+        return arr, self.lat[i], self.lon[i], self.country[i]
 
 
 def collate(batch):
     imgs = torch.stack([b[0] for b in batch])
     lat = torch.tensor([b[1] for b in batch])
     lon = torch.tensor([b[2] for b in batch])
-    return imgs, lat, lon
+    ctry = torch.tensor([b[3] for b in batch], dtype=torch.long)
+    return imgs, lat, lon, ctry
 
 
 def normalize_batch(imgs_uint8):
@@ -186,7 +192,7 @@ def normalize_batch(imgs_uint8):
 # ---------------------------------------------------------------------------
 
 class GeoModel(nn.Module):
-    def __init__(self, centroids, cell_lat, cell_lon, hier=()):
+    def __init__(self, centroids, cell_lat, cell_lon, hier=(), cell_country=None, n_country=0):
         super().__init__()
         from transformers import AutoModel
         from peft import LoraConfig, get_peft_model
@@ -214,6 +220,9 @@ class GeoModel(nn.Module):
         )
         self.fine_head = nn.Linear(HEAD_HIDDEN, N_CELLS)
         self.coarse_heads = nn.ModuleList([nn.Linear(HEAD_HIDDEN, c) for c in HIER_CELLS])
+        self.country_head = nn.Linear(HEAD_HIDDEN, n_country) if n_country else None
+        if cell_country is not None:
+            self.register_buffer("cell_country", cell_country)   # (N_CELLS,) fine cell -> country
         # Geocell geometry (buffers — fixed per run, not learned)
         self.register_buffer("centroids", centroids)      # (C, 3) unit vectors
         self.register_buffer("cell_lat", cell_lat)         # (C,)
@@ -255,15 +264,20 @@ class GeoModel(nn.Module):
         return f
 
     def head_logits(self, feats):
-        """(combined fine logits, [coarse logits per level]). Combined = fine + each
-        coarse level's logit broadcast onto its child fine cells (log-space product)."""
+        """(combined fine logits, [coarse logits per level], country logits). Combined =
+        fine + each coarse level's logit broadcast onto its child fine cells (log-space
+        product) + the country level's logit via the majority-vote parent map."""
         h = self.trunk(feats)
         fine = self.fine_head(h)
         coarse = [ch(h) for ch in self.coarse_heads]
         comb = fine
         for l, cl in enumerate(coarse):
             comb = comb + cl[:, getattr(self, f"parent_{l}")]
-        return comb, coarse
+        country = None
+        if self.country_head is not None:
+            country = self.country_head(h)
+            comb = comb + F.log_softmax(country, dim=-1)[:, self.cell_country]
+        return comb, coarse, country
 
     def logits(self, pixel_values):
         return self.head_logits(self.features(pixel_values).float())[0]
@@ -306,13 +320,37 @@ print(f"Geocells: {N_CELLS} (k-means, {KMEANS_ITERS} iters)")
 hier = [build_geocells(train_df, c, KMEANS_ITERS) for c in HIER_CELLS]
 print(f"Hierarchy: {HIER_CELLS} + {N_CELLS} (log-space combined)")
 
-model = GeoModel(centroids, cell_lat, cell_lon, hier).to(device)
+# Geographic (semantic) coarse level: countries. Fine cell -> country by majority vote of
+# the train points assigned to that cell; empty cells get the global modal country.
+_cc = train_df["country_code"].fillna("??").astype(str)
+COUNTRIES = sorted(_cc.unique().tolist())
+C2I = {c: i for i, c in enumerate(COUNTRIES)}
+N_COUNTRY = len(COUNTRIES)
+with torch.no_grad():
+    _tlat = torch.tensor(train_df["latitude"].to_numpy(), dtype=torch.float32, device=device)
+    _tlon = torch.tensor(train_df["longitude"].to_numpy(), dtype=torch.float32, device=device)
+    _pts = latlon_to_unit(_tlat, _tlon)
+    _assign = (_pts @ centroids.T).argmax(dim=1)                      # (N,) point -> fine cell
+    _pc = torch.tensor(_cc.map(C2I).to_numpy(dtype=np.int64), device=device)
+    _counts = torch.zeros(N_CELLS, N_COUNTRY, device=device)
+    _counts.index_put_((_assign, _pc), torch.ones_like(_pc, dtype=torch.float32), accumulate=True)
+    _empty = _counts.sum(dim=1) == 0
+    _counts[_empty] = _counts.sum(dim=0)                              # global histogram fallback
+    CELL_COUNTRY = _counts.argmax(dim=1)                              # (N_CELLS,)
+    del _tlat, _tlon, _pts, _assign, _pc, _counts
+print(f"Countries: {N_COUNTRY} (majority-vote parents for {N_CELLS} cells)")
+
+model = GeoModel(centroids, cell_lat, cell_lon, hier,
+                 cell_country=CELL_COUNTRY, n_country=N_COUNTRY).to(device)
 model.trunk.to(torch.float32); model.fine_head.to(torch.float32)
 model.coarse_heads.to(torch.float32)
+if model.country_head is not None:
+    model.country_head.to(torch.float32)
 
 lora_params = [p for n, p in model.backbone.named_parameters() if p.requires_grad]
 head_params = (list(model.trunk.parameters()) + list(model.fine_head.parameters())
-               + list(model.coarse_heads.parameters()))
+               + list(model.coarse_heads.parameters())
+               + (list(model.country_head.parameters()) if model.country_head is not None else []))
 n_train_params = sum(p.numel() for p in lora_params + head_params)
 print(f"Trainable params: {n_train_params/1e6:.2f}M (LoRA {sum(p.numel() for p in lora_params)/1e6:.2f}M "
       f"+ head {sum(p.numel() for p in head_params)/1e6:.2f}M)")
@@ -428,11 +466,11 @@ model.encode = torch.compile(model.encode, dynamic=True)   # compile the layer s
 # eager pre-encode part (embeddings + rope + patch dropout) stays outside the graph
 print("compile warmup (before the training clock)…", flush=True)
 _t_c = time.time()
-_wimgs, _, _ = next(data_iter)
+_wimgs, _, _, _ = next(data_iter)
 _x = normalize_batch(_wimgs)
 with autocast_ctx:
     _feats = model.features(_x)
-_logits, _ = model.head_logits(_feats.float())
+_logits, _, _ = model.head_logits(_feats.float())
 _logits.mean().backward()                       # compile the backward graph too
 optimizer.zero_grad(set_to_none=True)
 model.eval()
@@ -453,16 +491,16 @@ try:
         loss_val = 0.0
         for _ in range(GRAD_ACCUM):
             try:
-                imgs, blat, blon = next(data_iter)
+                imgs, blat, blon, bctry = next(data_iter)
             except StopIteration:
                 epoch += 1
                 data_iter = iter(train_loader)
-                imgs, blat, blon = next(data_iter)
+                imgs, blat, blon, bctry = next(data_iter)
             x = normalize_batch(imgs)
-            blat = blat.to(device); blon = blon.to(device)
+            blat = blat.to(device); blon = blon.to(device); bctry = bctry.to(device)
             with autocast_ctx:
                 feats = model.features(x)
-            logits, coarse_logits = model.head_logits(feats.float())
+            logits, coarse_logits, country_logits = model.head_logits(feats.float())
             tgt = soft_targets(blat, blon, cell_lat, cell_lon, SMOOTH_TAU_KM)
             logp = F.log_softmax(logits, dim=-1)
             loss = -(tgt * logp).sum(dim=-1).mean()
@@ -470,6 +508,8 @@ try:
                 tgt_l = soft_targets(blat, blon, getattr(model, f"coarse_lat_{l}"),
                                      getattr(model, f"coarse_lon_{l}"), SMOOTH_TAU_KM)
                 loss = loss + HIER_LOSS_W[l] * -(tgt_l * F.log_softmax(cl, dim=-1)).sum(dim=-1).mean()
+            if country_logits is not None:
+                loss = loss + COUNTRY_LOSS_W * F.cross_entropy(country_logits, bctry)
             loss = loss / GRAD_ACCUM
             loss.backward()
             loss_val += loss.item()
