@@ -53,8 +53,8 @@ HEAD_DROPOUT = 0.1
 POOL = "cls"                   # "cls" | "mean" | "cls_mean"
 
 # Optimization
-DEVICE_BATCH_SIZE = 24
-GRAD_ACCUM = 2
+DEVICE_BATCH_SIZE = 48         # exp14: better per-step than 24x2 but 13% slower uncompiled;
+GRAD_ACCUM = 1                 # retry now that compile bought the throughput back
 LORA_LR = 1e-4
 HEAD_LR = 1e-3
 WEIGHT_DECAY = 0.05
