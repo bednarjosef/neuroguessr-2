@@ -42,8 +42,10 @@ GRAD_CHECKPOINT = False   # bs24: activations fit without the ~30% recompute tax
 # logits are added (log-space) onto the fine cells at prediction, fixing wrong-region errors.
 HIER_CELLS = [64, 512]         # coarse levels (fine level is N_CELLS)
 HIER_LOSS_W = [0.25, 0.5]      # per-coarse-level CE weight (fine CE has weight 1.0)
-COUNTRY_LOSS_W = 0.5           # geographic (semantic) coarse level: hard-CE on country_code;
+COUNTRY_LOSS_W = 0.5           # geographic (semantic) coarse level: CE on country_code;
                                # its logits broadcast onto fine cells via majority-vote parents
+COUNTRY_TAU_KM = 300.0         # S5 exp5: haversine-smooth the country targets over country
+                               # centroids (near-miss countries penalized less; HierLoc-lite)
 N_CELLS = 2048
 KMEANS_ITERS = 25
 SMOOTH_TAU_KM = 75.0
@@ -337,7 +339,10 @@ with torch.no_grad():
     _empty = _counts.sum(dim=1) == 0
     _counts[_empty] = _counts.sum(dim=0)                              # global histogram fallback
     CELL_COUNTRY = _counts.argmax(dim=1)                              # (N_CELLS,)
-    del _tlat, _tlon, _pts, _assign, _pc, _counts
+    # Country centroids (spherical mean of that country's train points) for tau-smoothed targets
+    _csum = torch.zeros(N_COUNTRY, 3, device=device).index_add_(0, _pc, _pts)
+    COUNTRY_LAT, COUNTRY_LON = unit_to_latlon(F.normalize(_csum, dim=-1))
+    del _tlat, _tlon, _pts, _assign, _pc, _counts, _csum
 print(f"Countries: {N_COUNTRY} (majority-vote parents for {N_CELLS} cells)")
 
 model = GeoModel(centroids, cell_lat, cell_lon, hier,
@@ -509,7 +514,8 @@ try:
                                      getattr(model, f"coarse_lon_{l}"), SMOOTH_TAU_KM)
                 loss = loss + HIER_LOSS_W[l] * -(tgt_l * F.log_softmax(cl, dim=-1)).sum(dim=-1).mean()
             if country_logits is not None:
-                loss = loss + COUNTRY_LOSS_W * F.cross_entropy(country_logits, bctry)
+                tgt_c = soft_targets(blat, blon, COUNTRY_LAT, COUNTRY_LON, COUNTRY_TAU_KM)
+                loss = loss + COUNTRY_LOSS_W * -(tgt_c * F.log_softmax(country_logits, dim=-1)).sum(dim=-1).mean()
             loss = loss / GRAD_ACCUM
             loss.backward()
             loss_val += loss.item()
