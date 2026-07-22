@@ -39,3 +39,4 @@ ae5c260	221.496372	25.5	keep	S4 baseline re-run of champion (221.5) — seed
 0000000	241.352521	13.8	discard	S4 exp31 Muon(head, lr.02): 241.4 (+26) — too hot/mismatched; if ever retried start lr<=5e-3
 0d8f933	209.610872	25.8	keep	S4 exp32 bs96x1 (PatchDropout headroom): 215.4->209.6, top1 18.6% best ever — confirming
 63e090c	210.112733	25.8	keep	S4 exp32b CONFIRM bs96: 210.1 — KEEP, champion ~210
+63e090c	212.203007	25.8	keep	S5 baseline re-run (63e090c champion): seeds session at 212.2 (=210.1 within noise)
