@@ -30,3 +30,5 @@ a2f907c	230.929419	13.7	discard	EVAL_EVERY 250: 230.9 (-7.1, below 8km bar) — 
 ae5c260	221.555668	25.5	keep	S3 exp24b confirm — 221.5/221.6, bs48x1 banked, NEW CHAMPION
 ae5c260	0.000000	31.4	crash	S3 exp25 LoRA on gated MLP (up/gate/down) — OOM at bs48 (26GB base + MLP adapter activations >32GB); would need bs24 pairing, not retried bigger
 ae5c260	221.496372	25.5	keep	S4 baseline re-run of champion (221.5) — seed
+0000000	0.0	0.0	crash	S4 exp1a patch dropout — tf5.14 has .model not .layer; fixed, rerun
+71ee6c4	217.353437	13.8	keep	S4 exp1 PatchDropout 0.5 (train-only, rope-indexed): 221.5->217.4, steps 1307->2748, vram 26->13.8GB — confirming

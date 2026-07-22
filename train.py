@@ -51,6 +51,9 @@ PRED_RADIUS_KM = 1000.0        # only average cells within this radius of the to
 HEAD_HIDDEN = 1024
 HEAD_DROPOUT = 0.1
 POOL = "cls"                   # "cls" | "mean" | "cls_mean"
+PATCH_KEEP = 0.5               # PatchDropout/FLIP: fraction of patch tokens kept in TRAIN
+                               # forwards (eval always uses all tokens); RoPE cos/sin are
+                               # index-selected with the same mask so positions stay correct
 
 # Optimization
 DEVICE_BATCH_SIZE = 48         # exp14: better per-step than 24x2 but 13% slower uncompiled;
@@ -209,9 +212,28 @@ class GeoModel(nn.Module):
             self.register_buffer(f"coarse_lon_{l}", clon)
             self.register_buffer(f"parent_{l}", (centroids @ cc.T).argmax(dim=1))
 
+    def _core(self):
+        bb = self.backbone
+        core = getattr(bb, "base_model", bb)               # PEFT wrapper -> LoraModel
+        return getattr(core, "model", core)                # LoraModel -> DINOv3ViTModel
+
+    def encode(self, hs, cos, sin):
+        core = self._core()
+        enc = getattr(core, "model", None) or core.layer   # tf5.14: .model (encoder module)
+        out = enc(hs, (cos, sin))
+        return core.norm(out.last_hidden_state)
+
     def features(self, pixel_values):
-        out = self.backbone(pixel_values=pixel_values, **self._fwd_extra)
-        h = out.last_hidden_state                          # (B, prefix+patches, D)
+        core = self._core()
+        hs = core.embeddings(pixel_values.to(core.embeddings.patch_embeddings.weight.dtype))
+        cos, sin = core.rope_embeddings(pixel_values)      # (n_patches, head_dim) each
+        if self.training and PATCH_KEEP < 1.0:
+            n_patch = cos.shape[0]
+            keep = max(1, int(n_patch * PATCH_KEEP))
+            idx = torch.randperm(n_patch, device=hs.device)[:keep]
+            hs = torch.cat([hs[:, :NUM_PREFIX_TOKENS], hs[:, NUM_PREFIX_TOKENS:][:, idx]], dim=1)
+            cos, sin = cos[idx], sin[idx]
+        h = self.encode(hs, cos, sin)                      # (B, prefix+kept, D)
         if POOL == "cls":
             f = h[:, 0]
         elif POOL == "mean":
@@ -390,7 +412,8 @@ epoch = 1
 # torch.compile the backbone — the compile cost is paid HERE, before start_training_clock(),
 # so the whole 480s wall-alarm window runs compiled steps. dynamic=True + multi-shape eval
 # warmup below prevents recompile stalls inside the alarm (eval sees partial last batches).
-model.backbone = torch.compile(model.backbone, dynamic=True)
+model.encode = torch.compile(model.encode, dynamic=True)   # compile the layer stack; the
+# eager pre-encode part (embeddings + rope + patch dropout) stays outside the graph
 print("compile warmup (before the training clock)…", flush=True)
 _t_c = time.time()
 _wimgs, _, _ = next(data_iter)
