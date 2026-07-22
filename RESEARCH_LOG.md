@@ -14,11 +14,11 @@ Objective: **`median_km`** (median great-circle error on the val split), **lower
 
 ## Current champion
 
-- **median_km:** 215.4 (confirmed twice: 217.35 / 215.39, session 4)
-- **train.py commit:** 948fe2e (branch autoresearch/2026-07-22)
+- **median_km:** 210.1 (confirmed twice: 209.61 / 210.11, session 4)
+- **train.py commit:** 63e090c (branch autoresearch/2026-07-22, = master)
 - **one-line:** session-3 stack + **PatchDropout 0.5** (train forwards keep a random half of
   patch tokens, RoPE cos/sin index-selected to match; eval uses all tokens; compile targets
-  the encoder walk). Steps 1307→2750 (+110%), VRAM 26→13.8GB.
+  the encoder walk) + **bs96×1** (the freed VRAM spent on batch; 1500 steps, 25.8GB).
 - prior: 221.5 @ ae5c260 = no-grad-ckpt + bs48×1 (32w) + 2048 geocells/topk16 + mode-seeking
   prediction (T=0.5, 1000km locality) + hier heads 64/512/2048 (log-space, w 0.25/0.5/1.0)
   + IMG 384 + EVAL_EVERY 250 + torch.compile(dynamic=True) with pre-clock warmup
@@ -61,7 +61,13 @@ _(each entry: the change, the median_km delta, and why it likely helped)_
   the same mask; prefix cls+register tokens exempt); eval keeps all tokens. +110% steps,
   VRAM halved to 13.8GB. cell_top1 slightly down, median clearly up — throughput converts.
   tf 5.14 note: encoder module is `core.model` (DINOv3ViTEncoder, called as `enc(hs, (cos,sin))`),
-  NOT `.layer`. Freed VRAM opens bs96 as a follow-up (untried).
+  NOT `.layer`.
+- **bs96×1** (215.4→209.6/210.1 CONFIRMED, session 4): PatchDropout's VRAM dividend spent on
+  doubling the real batch. Steps 2750→1500 yet clearly better — step count SATURATES at this
+  budget (~2750); past it, buy per-step quality (batch), not more steps. cell_top1 18.6% best.
+- **Geocell disk cache** (session 4, plumbing not a win): k-means cells cached per
+  (n_cells,iters,npts) in CACHE_DIR — deterministic cells across runs (CUDA index_add_ is
+  nondeterministic). Josef asked for this; keep it.
 
 ## Dead ends & mistakes (tried, did NOT help or broke — do NOT repeat)
 
@@ -101,6 +107,15 @@ _(each entry: what was tried, what happened, and the takeaway so it isn't retrie
 - **LoRA on gated MLP (up/gate/down_proj) at bs48**: OOM (26GB base + MLP adapter activations
   >32GB). Untested at bs24×2 — if retried, pair with smaller device batch. DINOv3 MLP module
   names are up_proj/gate_proj/down_proj (gated MLP, NOT fc1/fc2).
+- **Geocells 2048→4096 + topk24 (S4)**: 223.8 (+8.4 vs 215.4). acc@25km UP (3.4%, first
+  nonzero acc@1km) but 4096-way CE too hard at ~2750 steps (top1 10.6%). Cell-count sweep
+  DONE at 8-min budgets; finer cells only make sense with much longer training.
+- **FixRes train 288 / eval 384 (S4)**: 219.2 (+3.8) despite 4410 steps (+60%) — the step-
+  scaling curve BENDS past ~2750 steps; further throughput no longer converts. Diagnostic
+  moment for the whole "buy steps" era.
+- **LR ×2 (S4)**: 227.2 (+11.8). 1e-4/1e-3 optimal even at 2x step count. LR sweep DONE, frozen.
+- **Muon on head matrices, lr 0.02 (S4)**: 241.4 (+26) — far too hot for this soft-CE head.
+  If EVER retried: lr ≤5e-3 and expect little; low priority.
 
 ## Parked for LONG-budget runs (better per-step, worse per-second — revisit when --minutes grows)
 
@@ -218,6 +233,27 @@ _(anything about the box, dataset, VRAM ceilings, throughput, DINOv3 quirks, etc
 ## Session history
 
 _(one dated block per session: dates, champion at start → end, headline results)_
+
+### 2026-07-22 (session 4, night — mandate: big swings)
+- Champion at start: 221.5 (baseline re-run 221.50 exactly) → at end: **210.1** (63e090c),
+  −5.1% this session, −60.8% cumulative from 535.4
+- Experiments run: 9 (baseline + 6 ideas + 2 confirms; 2 KEEP confirmed, 4 discard, 1 3-min crash)
+- Headline: **PatchDropout 0.5** (−6.1: drop half the patch tokens in train forwards,
+  index-select RoPE cos/sin; +110% steps, VRAM halved) then **bs96×1** (−5.3: spend the freed
+  VRAM on batch). Key scientific yield: **step-scaling saturates ~2750 steps at 8-min** —
+  FixRes hit 4410 steps and LOST; past saturation the winning currency flips from steps to
+  per-step quality. LR and cell-count sweeps now DONE/frozen. Muon-on-head flopped at lr .02.
+- Infra: Austria box (offer 43122662, $0.40/hr). Lost ~65 min to (a) setup's single SSH
+  session dying silently (local hang, remote orphan kept running — TWO racing setups), and
+  (b) prepare.py cache-tar download stuck in CLOSE-WAIT (HF CDN hung up, no socket timeout).
+  Recovery pattern that worked: kill both, relaunch prepare.py directly under nohup with
+  `python -u` + log file, stream the log. TODO NEXT SESSION (pre-loop, allowed): make
+  `vast.py setup` run remote-side under nohup+log with local tail/reattach + heartbeat; add
+  socket timeout/retry to prepare.py tar download. Spend: ~$1.35.
+- For next session: bs96 needs 25.8GB (5090-only); at 4090 use bs48. PATCH_KEEP itself swept
+  only at 0.5 — 0.4/0.6 is ONE allowed follow-up. ViT-B compute-matched swap still untried
+  (less appealing now that steps saturated). Long-run parked list unchanged (EMA, aug,
+  IMG 448, ViT-H+, finer cells, rerank family).
 
 ### 2026-07-22 (session 3)
 - Champion at start: 229.9 (box baseline 232.4) → at end: **221.5** (ae5c260), −4.7% this session

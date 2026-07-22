@@ -21,7 +21,18 @@ heartbeat + direct-nohup mode.
 | 29 | FixRes: train 288px / eval 384px (324→162 kept tokens w/ dropout) | 219.2 | discard (+3.8; 4410 steps (+60%) yet worse — STEP-SCALING EXHAUSTED past ~2750 steps; res loss nets negative now. acc@25 up again) |
 | 30 | LR ×2 (2e-4/2e-3) — steps doubled since LRs were tuned | 227.2 | discard (+11.8, clearly worse — LR sweep DONE, 1e-4/1e-3 frozen) |
 | 31 | Muon (NS-orthogonalized momentum, lr .02) on 2D head/trunk matrices; AdamW keeps LoRA+biases | 241.4 | discard (+26 — lr .02 way too hot for this head/loss; retry only at ≤5e-3, low priority) |
-| 32 | bs96×1 (PatchDropout freed VRAM; steps saturated → buy per-step quality via bigger real batch) | running | LR kept 1e-4/1e-3 (LR×2 already ruled out) |
+| 32 | bs96×1 (PatchDropout freed VRAM; steps saturated → buy per-step quality via bigger real batch) | 209.6 | −5.8, top1 18.6% + acc@25 3.7% best ever, 1500 steps, vram 25.8GB. Confirming |
+| 32b | confirm re-run | 210.1 | **KEEP** (209.61/210.11 — champion ≈210.1 @ 63e090c) |
+
+## Champion (end of session 4)
+
+- **~210 km** @ 63e090c (confirmed 209.61/210.11): session-3 stack + **PatchDropout 0.5**
+  + **bs96×1**. Panel: mean ~1048–1058 | acc@25 3.7–3.8% | acc@200 48.0–48.2% | acc@2500
+  ~90.6% | geoguessr ~3740 | top1 18.2–18.6% | top5 45.8–45.9% | 1500 steps/8min | vram 25.8GB.
+- Session arc: steps 1307→2750 (PatchDropout) proved step-scaling then SATURATED (FixRes's
+  4410 steps lost); bs96 converted the same throughput into per-step quality instead. The
+  parked-idea compounding chain: exp14 bs48 (parked) → compile un-parks it (S3) → PatchDropout
+  VRAM dividend doubles it (S4).
 
 ## Session 3 results are below.
 
