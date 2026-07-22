@@ -59,3 +59,17 @@ bcf1049	211.232747	29.0	keep	S5 exp9 ViT-H+ (0.84B, bs48): 214.2->211.2 marginal
 0000000	0.000000	31.4	crash	S5 exp14a GeM(cls+gem concat) @ bs96: OOM at warmup — champion sits at 31.0GB after PATCH_KEEP 0.6; GeM needs memory pairing
 0000000	212.141253	28.0	discard	S5 exp14b GeM cls+gem @ bs84 (recovered from run.log after SSH drop): 212.1 vs 213.0 — misses >=1km bar by 0.11km. Panel better (mean 950, acc2500 92.5, country 46.1) — ONE retune allowed later
 0000000	214.810684	30.4	discard	S5 exp15 LoRA r32/a64: 214.8 (+1.8) — capacity costs steps (1158), doesn't pay; r16 FROZEN
+0c153ed	215.654	30.4	keep	S6 baseline (Italy box anchor): champion @ 0c153ed
+0c153ed	209.489	30.4	keep	S6 exp1 MSL: differentiable spherical-mean + Geman-McClure km loss (w0.5 s300 T0.5)
+ee5bb06	0	31.2	crash	S6 exp2a bary: OOM at bs96 (champion peak 31.08GB + bary allocs); retry bs84
+ee5bb06	212.110	26.8	discard	S6 exp2b bary@bs84: 212.11 vs 209.49 — sparse bary labels lose tau regularization; acc25 3.8% box-best (blend idea parked)
+ee5bb06	205.458	30.4	keep	S6 exp3 staggered tessellation: 2nd fine head seed1, union readout — 209.49->205.46
+8d0c8fd	0	0	crash	S6 exp4a meta heads: my class-scope bug (module block closed class, lost predict_latlon)
+8d0c8fd	213.536	30.4	discard	S6 exp4b elev+season heads: 213.54 vs 209.49 — pure-aux heads tax gradient (country worked via readout wiring)
+8d0c8fd	209.849	30.4	discard	S6 exp5 GeoKernel: 209.85 vs 209.49 — neutral at 8min; value is retrieval-enabling, pair with exemplar memory later
+8d0c8fd	0	0	crash	S6 exp6a vMF: same class-scope bug as exp4a (fixed + AST audit of remaining variants)
+8d0c8fd	207.693	30.4	keep	S6 exp6b vMF-aux (16 comp, w0.25): 207.69 vs 209.49 base — keep; goes to integration stack
+8d0c8fd	216.513	30.4	discard	S6 exp7 confusion-forge: 216.51 vs 209.49 — sampler skew kills diversity (3rd confirmation), country_acc flat
+8d0c8fd	0	31.2	crash	S6 exp8a pano: OOM bs96 (KL tensors over 31.08GB peak); retry bs84
+8d0c8fd	234.077	27.0	discard	S6 exp8b PanoDistill@84: 234.08 — grouped sampler = 21 locs/batch, diversity kill (InfoNCE repeat); park for full runs
+8d0c8fd	211.894	30.4	discard	S6 exp9 integration MSL+stagger+vMF: 211.89 vs 205.46 — keeps do NOT stack (aux crowding); champion stays MSL+stagger

@@ -14,9 +14,14 @@ Objective: **`median_km`** (median great-circle error on the val split), **lower
 
 ## Current champion
 
-- **median_km:** 213.0 on the Korea box whose champion anchor read 214.2 (Estonia box read
-  the same stack at ~209.9 — boxes differ by ~4 km; est. true champion ~208.8)
-- **train.py commit:** 1dfceb0 (branch autoresearch/2026-07-22b)
+- **median_km (60k/8min ratchet): 205.46** on the Italy box whose baseline anchor read 215.65
+  (−10.2 vs anchor; boxes differ ~4-6 km). Stack = S5 champion + **MSL** (median-seeking loss)
+  + **staggered tessellation** (2nd 2048-cell fine head on k-means seed 1, union readout).
+- **Separate lineage — FULL-RUN model (train_full.py): official 104.66 on full val** (best
+  subset eval 99.91), ckpt local at run_full/ckpt_best.pt + HF josefbednar/neuroguessr-fullrun-ckpt;
+  served by webapp/server.py.
+- **train.py commit:** see autoresearch/2026-07-22-ideas branch (S6 keeps committed there;
+  master carries the same file)
 - **one-line:** session-4 stack + **country-level hierarchy** (w=0.5, majority-vote parents)
   + **tau-smoothed country targets** (300km) + **PATCH_KEEP 0.6** (post-saturation: richer
   tokens beat extra steps; VRAM 31.0GB peak on 5090 — NO headroom, use 0.5 on smaller GPUs).
@@ -329,6 +334,22 @@ _(anything about the box, dataset, VRAM ceilings, throughput, DINOv3 quirks, etc
 ---
 
 ## Session history
+
+### 2026-07-22 evening — S6 idea-batch ratchet (Italy 1x5090, 8 exps + integration): 215.65 -> 205.46
+- **KEEP: MSL** (differentiable spherical-mean + Geman-McClure km loss, w0.5/s300/T0.5):
+  215.65->209.49 (−6.2, biggest since PatchDropout). cell_top1 UNCHANGED — pure mass-placement
+  win, the quantization-floor thesis validated. **KEEP: staggered tessellation** (2nd fine head
+  seed1, union readout): 209.49->205.46 (−4.0). **KEEP-but-does-not-stack: vMF-aux** (16 comp
+  w0.25): 207.69 on MSL base (−1.8) BUT integration MSL+stagger+vMF = 211.89 — aux crowding;
+  champion stays MSL+stagger.
+- Discards: pure barycentric labels 212.11 (acc@25 3.8% box-best — tau+bary BLEND parked);
+  elev+season pure-aux heads 213.54 (aux without readout wiring taxes gradient); GeoKernel
+  209.85 (neutral — retrieval enabler, pair with exemplar memory); confusion-forge 216.51
+  (sampler diversity law, 3rd confirmation); PanoDistill@84 234.08 (21 locs/batch — park for
+  full-run epochs).
+- Full-run queue: add MSL to train_full.py next full run (+ consider stagger); vMF/PanoDistill
+  candidates at scale only. Infra: variant-generator class-scope bug cost 2 crashed runs —
+  ALWAYS AST-check GeoModel methods after scripted edits; OOM pairing rule applied 2x (bs84).
 
 ### 2026-07-22 — FULL-DATASET RUN (not a ratchet session): 209.5 -> 104.7 official
 - train_full.py @ master: champion stack, ALL 1,198,072 imgs (300k locs x 4 views), 3 epochs,
