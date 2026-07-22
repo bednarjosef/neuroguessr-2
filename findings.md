@@ -1,5 +1,21 @@
 # Findings — autoresearch sessions (image geolocalization, median_km ↓)
 
+## Session 4 — 2026-07-22 (starts from champion 221.5 @ ae5c260, 3h, mandate: BIG swings)
+
+Plan (scout-refreshed): 1. PatchDropout 50% (FLIP/PatchDropout — drop patch tokens in train
+fwd only, index-select RoPE cos/sin to match; ~2x step throughput), 2. finer geocells
+2048→4096 (+topk; we're quantization-limited: ~250km mean cell radius vs 221km median),
+3. FixRes train 256–288 / eval 384, 4. Muon on the head, 5. ViT-B compute-matched swap,
+6. LR ×2 for bs48. Scout flagged ToMe as NOT feasible in HF DINOv3 (RoPE surgery) — skip.
+Infra: Austria box (43122662); first setup SSH-hung 50 min (silent), then HF CDN CLOSE-WAIT
+stall in prepare.py — killed + nohup rerun with live log fixed it. TODO for vast.py: setup
+heartbeat + direct-nohup mode.
+
+| # | idea | median_km | verdict |
+|---|------|-----------|---------|
+
+## Session 3 results are below.
+
 ## Session 3 — 2026-07-21c (starts from champion 229.9 @ 32075c7, 4-hour session)
 
 Plan (ranked from RESEARCH_LOG): 1. geo-contrastive hard negatives (semivariogram-weighted,
