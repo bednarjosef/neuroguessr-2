@@ -50,6 +50,14 @@ N_CELLS = 2048
 KMEANS_ITERS = 25
 SMOOTH_TAU_KM = 75.0
 PRED_TOPK = 16
+# MSL (Median-Seeking Loss): differentiate through the ACTUAL prediction rule — softmax over
+# cells -> prob-weighted spherical mean -> geodesic km to truth — wrapped in a REDESCENDING
+# robust loss (Geman-McClure d^2/(d^2+s^2)): gradient vanishes on hopeless far misses so the
+# model spends capacity on the fixable middle mass (= the median), and shading mass across
+# neighboring cells learns sub-cell interpolation (attacks the quantization floor).
+MSL_W = 0.5
+MSL_S_KM = 300.0
+MSL_TEMP = 0.5                 # match PRED_TEMP so training matches the sharpened readout
 PRED_TEMP = 0.5                # sharpen posterior before the spherical mean (mode-seeking)
 PRED_RADIUS_KM = 1000.0        # only average cells within this radius of the top-1 cell
 HEAD_HIDDEN = 1024
@@ -571,6 +579,15 @@ try:
             if country_logits is not None:
                 tgt_c = soft_targets(blat, blon, COUNTRY_LAT, COUNTRY_LON, COUNTRY_TAU_KM)
                 loss = loss + COUNTRY_LOSS_W * -(tgt_c * F.log_softmax(country_logits, dim=-1)).sum(dim=-1).mean()
+            # MSL: differentiable spherical-mean prediction, redescending km loss
+            p_msl = F.softmax(logits / MSL_TEMP, dim=-1)
+            v_msl = p_msl @ model.centroids
+            v_msl = v_msl / v_msl.norm(dim=-1, keepdim=True).clamp(min=1e-6)
+            u_true = latlon_to_unit(blat, blon)
+            cosang = (v_msl * u_true).sum(dim=-1).clamp(-1 + 1e-7, 1 - 1e-7)
+            d_msl = EARTH_RADIUS_KM * torch.acos(cosang)
+            gm = d_msl.pow(2) / (d_msl.pow(2) + MSL_S_KM ** 2)
+            loss = loss + MSL_W * gm.mean()
             loss = loss / GRAD_ACCUM
             loss.backward()
             loss_val += loss.item()
