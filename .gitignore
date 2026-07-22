@@ -24,3 +24,7 @@ dev/
 
 # secrets forwarded to the box (never commit)
 .env
+
+# full-run checkpoints/logs pulled from the box (big binaries; best ckpt lives on HF)
+run_full/
+run_smoke/

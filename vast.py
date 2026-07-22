@@ -447,7 +447,10 @@ def parse_metrics(text: str) -> dict:
 # Loaded from a gitignored .env in the repo root and/or the local environment (env wins).
 FORWARD_ENV_KEYS = ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "WANDB_API_KEY",
                     "WANDB_PROJECT", "WANDB_ENTITY", "WANDB_MODE", "AR_RUN_NAME",
-                    "AR_N_TRAIN", "AR_N_VAL", "AR_QUICK_VAL_N")
+                    "AR_N_TRAIN", "AR_N_VAL", "AR_QUICK_VAL_N",
+                    # full-run knobs (train_full.py / raw download path)
+                    "AR_RAW_TRAIN", "AR_DOWNLOAD_WORKERS", "AR_EPOCHS", "AR_CELLS",
+                    "AR_RESUME", "AR_CKPT_HF_REPO", "AR_MAX_STEPS")
 
 
 def _load_dotenv() -> dict:

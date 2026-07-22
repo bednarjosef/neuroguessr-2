@@ -174,6 +174,12 @@ def _download_split(split_name, n, img_dir, meta_path, shuffle):
 
 DOWNLOAD_WORKERS = int(os.environ.get("AR_DOWNLOAD_WORKERS", "16"))
 SHARD_SHUFFLE_BUFFER = 1000   # per-worker shuffle buffer (part of the frozen subset definition)
+# Full-dataset mode (AR_RAW_TRAIN=1): save each train image's stored JPEG bytes as-is (no
+# decode + resize + re-encode — the source images are already <=512px) and take EVERY row of
+# each worker's shard slice instead of a shuffled quota. Turns the 1.2M-image download from
+# CPU-bound (~150 img/s) into network-bound. Val stays on the re-encode path unchanged so
+# val images (and scores) remain byte-identical to all previous sessions.
+RAW_TRAIN = os.environ.get("AR_RAW_TRAIN", "0") == "1"
 
 
 def _stream_shard_worker(args):
@@ -186,10 +192,11 @@ def _stream_shard_worker(args):
     # Deterministic (shard, seed) stream -> identical rows on any retry. Subset unchanged.
     import pandas as pd
     part_path = os.path.join(CACHE_DIR, f"train_part_w{widx:02d}.parquet")
+    done_path = part_path + ".done"   # marker: this worker's shard slice is fully drained
     if os.path.exists(part_path):
         try:
             part = pd.read_parquet(part_path)
-            if len(part) >= quota:
+            if os.path.exists(done_path) or len(part) >= quota:
                 print(f"  train[w{widx:02d}]: part cached ({len(part)} rows), skipping", flush=True)
                 return part.to_dict("records")
         except Exception:
@@ -201,7 +208,11 @@ def _stream_shard_worker(args):
         try:
             ds = load_dataset(DATASET_NAME, split="train", streaming=True)
             ds = ds.shard(num_shards=nshards, index=widx)
-            ds = ds.shuffle(seed=DATA_SEED + widx, buffer_size=SHARD_SHUFFLE_BUFFER)
+            if RAW_TRAIN:
+                from datasets import Image as _HFImage
+                ds = ds.cast_column("image", _HFImage(decode=False))  # raw bytes, no decode
+            else:
+                ds = ds.shuffle(seed=DATA_SEED + widx, buffer_size=SHARD_SHUFFLE_BUFFER)
             rows = []
             t0 = time.time()
             for ex in ds:
@@ -216,7 +227,14 @@ def _stream_shard_worker(args):
                     continue
                 fname = f"w{widx:02d}_{len(rows):06d}.jpg"
                 try:
-                    _resize_for_storage(img).save(os.path.join(img_dir, fname), "JPEG", quality=90)
+                    if RAW_TRAIN:
+                        by = img["bytes"] if isinstance(img, dict) else None
+                        if not by:
+                            continue
+                        with open(os.path.join(img_dir, fname), "wb") as fh:
+                            fh.write(by)
+                    else:
+                        _resize_for_storage(img).save(os.path.join(img_dir, fname), "JPEG", quality=90)
                 except Exception:
                     continue
                 rec = {"path": fname, "latitude": lat, "longitude": lon}
@@ -224,11 +242,14 @@ def _stream_shard_worker(args):
                     if c not in ("latitude", "longitude") and c in ex:
                         rec[c] = ex[c]
                 rows.append(rec)
-                if widx == 0 and len(rows) % 250 == 0:
+                every = 2000 if RAW_TRAIN else 250
+                if widx == 0 and len(rows) % every == 0:
                     rate = len(rows) / (time.time() - t0 + 1e-9)
-                    print(f"  train[w0]: {len(rows)}/{quota} ({rate:.1f} img/s/worker, ~{rate*nshards:.0f} img/s total)",
+                    print(f"  train[w0]: {len(rows)} ({rate:.1f} img/s/worker, ~{rate*nshards:.0f} img/s total)",
                           flush=True)
             pd.DataFrame(rows).to_parquet(part_path, index=False)
+            with open(done_path, "w") as fh:
+                fh.write(str(len(rows)))
             print(f"  train[w{widx:02d}]: done ({len(rows)} rows -> part)", flush=True)
             return rows
         except Exception as e:
@@ -250,8 +271,11 @@ def _download_train_parallel(n, img_dir, meta_path):
     os.makedirs(img_dir, exist_ok=True)
     ds = load_dataset(DATASET_NAME, split="train", streaming=True)
     nshards = max(1, min(DOWNLOAD_WORKERS, getattr(ds, "num_shards", 1) or 1))
-    quota = -(-n // nshards)
-    print(f"  train: {nshards} parallel shard streams x {quota} rows (seed={DATA_SEED})")
+    # Raw/full mode: each worker drains its whole shard slice (no per-worker cap, so uneven
+    # shard sizes can't drop rows); the union is the entire train split.
+    quota = 10**9 if RAW_TRAIN else -(-n // nshards)
+    print(f"  train: {nshards} parallel shard streams x "
+          f"{'ALL rows (raw bytes)' if RAW_TRAIN else f'{quota} rows'} (seed={DATA_SEED})")
     t0 = time.time()
     from multiprocessing import get_context
     with get_context("spawn").Pool(nshards) as pool:
