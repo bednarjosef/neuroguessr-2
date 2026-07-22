@@ -151,6 +151,53 @@ def build_geocells(train_df, n_cells, iters):
         pass
     return centroids, cell_lat, cell_lon
 
+def build_semantic_geocells(train_df, n_cells, iters):
+    """PIGEON-style semantic fine cells: k-means WITHIN each country, cell counts allocated
+    across countries by largest remainder on train-point counts (each country >= 1 cell,
+    never more cells than points, cells never straddle a border)."""
+    from prepare import CACHE_DIR
+    _ck = os.path.join(CACHE_DIR, f"semcells_{n_cells}_{iters}_{len(train_df)}.pt")
+    if os.path.exists(_ck):
+        d = torch.load(_ck, map_location=device)
+        return d["centroids"], d["cell_lat"], d["cell_lon"]
+    codes = train_df["country_code"].fillna("??").astype(str).to_numpy()
+    lat = torch.tensor(train_df["latitude"].to_numpy(), dtype=torch.float32, device=device)
+    lon = torch.tensor(train_df["longitude"].to_numpy(), dtype=torch.float32, device=device)
+    pts = latlon_to_unit(lat, lon)
+    uniq, inv, cnt = np.unique(codes, return_inverse=True, return_counts=True)
+    extra = n_cells - len(uniq)
+    q = extra * cnt / cnt.sum()
+    k = 1 + np.floor(q).astype(int)
+    rem = q - np.floor(q)
+    for i in np.argsort(-rem)[:n_cells - int(k.sum())]:
+        k[i] += 1
+    k = np.minimum(k, cnt)                      # never more cells than points
+    while k.sum() < n_cells:                    # redistribute any clipped deficit
+        i = int(np.argmax(cnt - k)); k[i] += 1
+    inv_t = torch.tensor(inv, device=device)
+    cents = []
+    for ci in range(len(uniq)):
+        p = pts[inv_t == ci]
+        ki = int(k[ci])
+        g = torch.Generator(device=device).manual_seed(ci)
+        c = p[torch.randperm(p.size(0), generator=g, device=device)[:ki]].clone()
+        for _ in range(iters):
+            a = (p @ c.T).argmax(dim=1)
+            new = torch.zeros_like(c)
+            new.index_add_(0, a, p)
+            m = torch.zeros(ki, device=device).index_add_(
+                0, a, torch.ones(p.size(0), device=device)) > 0
+            new[m] = F.normalize(new[m], dim=-1)
+            c[m] = new[m]
+        cents.append(c)
+    centroids = torch.cat(cents).detach()
+    cell_lat, cell_lon = unit_to_latlon(centroids)
+    try:
+        torch.save({"centroids": centroids, "cell_lat": cell_lat, "cell_lon": cell_lon}, _ck)
+    except OSError:
+        pass
+    return centroids, cell_lat.detach(), cell_lon.detach()
+
 # ---------------------------------------------------------------------------
 # Dataset / dataloader (JPEG -> normalized 448 tensor; on CPU workers)
 # ---------------------------------------------------------------------------
@@ -317,7 +364,7 @@ def soft_targets(true_lat, true_lon, cell_lat, cell_lon, tau_km):
 
 _, train_df = load_index("train")
 print(f"Train pool: {len(train_df)} images | Backbone: {MODEL_NAME} @ {IMG_SIZE}px")
-centroids, cell_lat, cell_lon = build_geocells(train_df, N_CELLS, KMEANS_ITERS)
+centroids, cell_lat, cell_lon = build_semantic_geocells(train_df, N_CELLS, KMEANS_ITERS)
 print(f"Geocells: {N_CELLS} (k-means, {KMEANS_ITERS} iters)")
 hier = [build_geocells(train_df, c, KMEANS_ITERS) for c in HIER_CELLS]
 print(f"Hierarchy: {HIER_CELLS} + {N_CELLS} (log-space combined)")

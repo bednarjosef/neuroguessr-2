@@ -21,7 +21,21 @@ correct 4.65GB tar from this box (TAR_UPLOAD_OK). Estonia box: 116 MB/s HF, 60k 
 | # | idea | median_km | verdict |
 |---|------|-----------|---------|
 | 33 | baseline re-run (63e090c champion) | 212.2 | champion seed (=210.1 within noise; 1484 steps, 25.8GB) |
-| 34 | country-level geographic hier: hard-CE (w .5) country head + log-softmax broadcast onto fine cells via majority-vote parents (156-country level above 64/512/2048) | 210.3 | −1.9 marginal BUT the right panel signature: mean 1079→1019, acc@2500 90.8→91.8, acc@750 +1.2pp, top5 47.1% best ever. Confirming |
+| 34 | country-level geographic hier: hard-CE (w .5) country head + log-softmax broadcast onto fine cells via majority-vote parents (115-country level above 64/512/2048) | 210.3 | −1.9 marginal BUT the right panel signature: mean 1079→1019, acc@2500 90.8→91.8, acc@750 +1.2pp, top5 47.1% best ever. Confirming |
+| 34b | confirm re-run | 210.6 | **KEEP** (210.34/210.58 both beat 212.2; mean 998 best ever @ 39d8efb) |
+| 35 | + subdivision level (1895-way hard CE, w .5) | 210.2 | discard (median flat, panel regressed: mean +40, top1 −1.3pp — country granularity is where semantic supervision stops paying) |
+| 36a | IMG 448 + PatchDropout @ bs96 | OOM | crash at warmup (31.3GB, pre-clock, cheap) |
+| 36b | IMG 448 + PatchDropout @ bs72 | 224.4 | discard (+14; 1410 steps ≈ matched — 384 FROZEN, 3rd independent confirmation: S2 win, S4 FixRes, this) |
+| 37 | country targets tau-smoothed (300km over country spherical centroids) instead of hard CE | 209.5 | best of session; confirming |
+| 37b | confirm re-run | 210.3 | **KEEP** (209.53/210.30 both beat 210.34/210.58 — champion ~209.9 @ 07bd934) |
+| 38 | PIGEON retrieval refinement v1: embed 60k train post-clock, snap to sim-weighted top-8 NN within top-5 cells, blend .5 | 222.6 | discard (+12.7 median BUT acc@25 3.97% best ever — snap fixes close cases, wrecks typical ones at top1=18%. One retune: sim-gated cluster-centroid version) |
+| 39 | semantic geocells (country-constrained k-means, largest-remainder allocation) | NEVER RAN | box force-stopped by Vast (credit exhausted); code ready in tree — RUN FIRST next session |
+
+**Session pivot (Josef, mid-session): mandate changed to substantial structural swings, target
+median ≤100 km eventually. Extended +2h. Honest read: 100 km needs harness-level changes (more
+data / panoramas / longer budget) — PIGEON's 44 km used 500k imgs + 4-view panoramas + days of
+training. In-harness moonshots ranked: retrieval refinement (their biggest ablation win),
+semantic geocells, ViT-H+.**
 
 ## Champion (end of session 4) — see below for session-4 details
 

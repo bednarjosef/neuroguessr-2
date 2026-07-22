@@ -14,13 +14,16 @@ Objective: **`median_km`** (median great-circle error on the val split), **lower
 
 ## Current champion
 
-- **median_km:** ~210.5 vs a 212.2 box baseline (session 5, confirmed 210.34/210.58; S4's
-  210.1 restated within noise on the S5 box)
-- **train.py commit:** 39d8efb (branch autoresearch/2026-07-22b)
-- **one-line:** session-4 stack + **country-level geographic hierarchy** (hard-CE country head
-  w=0.5, log-softmax broadcast onto fine cells via majority-vote cell→country parents).
-  Median barely moved but the tail collapsed: mean 1079→998 (best ever), acc@2500 91.9%,
-  top5 47.4% best ever.
+- **median_km:** ~209.9 vs a 212.2 box baseline (session 5; tau-country confirmed
+  209.53/210.30, on top of country-hier confirmed 210.34/210.58)
+- **train.py commit:** 07bd934 (branch autoresearch/2026-07-22b)
+- **one-line:** session-4 stack + **country-level geographic hierarchy** (country head w=0.5
+  wired into the fine posterior via majority-vote parents) + **tau-smoothed country targets**
+  (300km over country spherical centroids instead of hard CE). Tail collapsed: mean ~1000
+  (best ever), acc@2500 ~91.9%, top5 47.4% best ever.
+- **In-flight when the box died:** semantic geocells (country-constrained k-means fine cells,
+  PIGEON-style) — code is IN the working tree on the session branch, syntax-checked, never
+  scored. Run it first next time a box is up.
 - prior: 221.5 @ ae5c260 = no-grad-ckpt + bs48×1 (32w) + 2048 geocells/topk16 + mode-seeking
   prediction (T=0.5, 1000km locality) + hier heads 64/512/2048 (log-space, w 0.25/0.5/1.0)
   + IMG 384 + EVAL_EVERY 250 + torch.compile(dynamic=True) with pre-clock warmup
@@ -67,6 +70,10 @@ _(each entry: the change, the median_km delta, and why it likely helped)_
 - **bs96×1** (215.4→209.6/210.1 CONFIRMED, session 4): PatchDropout's VRAM dividend spent on
   doubling the real batch. Steps 2750→1500 yet clearly better — step count SATURATES at this
   budget (~2750); past it, buy per-step quality (batch), not more steps. cell_top1 18.6% best.
+- **Tau-smoothed country targets** (→209.53/210.30 CONFIRMED, session 5): country CE targets
+  = softmax(-d(true, country_centroid)/300km) instead of hard one-hot — near-miss countries
+  penalized less (HierLoc-lite distance-weighting). The ONE follow-up on the country win; both
+  knobs (w=0.5, tau=300) now FROZEN.
 - **Country-level geographic hierarchy** (212.2→210.34/210.58 CONFIRMED, session 5): 115-way
   hard-CE country head (w=0.5) + log_softmax(country) added onto fine logits via majority-vote
   fine-cell→country parents (empty cells → global mode). Median −1.7 (small) but mean −81 and
@@ -123,6 +130,15 @@ _(each entry: what was tried, what happened, and the takeaway so it isn't retrie
 - **LR ×2 (S4)**: 227.2 (+11.8). 1e-4/1e-3 optimal even at 2x step count. LR sweep DONE, frozen.
 - **Muon on head matrices, lr 0.02 (S4)**: 241.4 (+26) — far too hot for this soft-CE head.
   If EVER retried: lr ≤5e-3 and expect little; low priority.
+- **Subdivision level (S5)**: 210.2 — median flat, panel regressed (1895-way CE eats gradient;
+  country granularity is where semantic supervision stops paying at 8-min).
+- **IMG 448 + PatchDropout (S5)**: OOM @ bs96, then 224.4 (+14) @ bs72 — 384 is now TRIPLE
+  confirmed (S2 win, S4 FixRes, S5). Resolution FROZEN at 8-min budgets, even post-saturation.
+- **Retrieval refinement v1 (S5)**: 222.6 (+12.7) BUT acc@25km 3.97% best ever — always-on
+  top-8-NN blend (w .5, top-5 cells) fixes close cases and wrecks typical ones at top1=18%.
+  ONE retune allowed: sim-GATED + OPTICS-style cluster centroids + multiply-with-cell-probs
+  (PIGEON's actual mechanism; their ablation: median 44.4→50.0 without it). Needs top1 much
+  higher to be a median lever; keep it eval-time only.
 
 ## Parked for LONG-budget runs (better per-step, worse per-second — revisit when --minutes grows)
 
@@ -240,6 +256,27 @@ _(anything about the box, dataset, VRAM ceilings, throughput, DINOv3 quirks, etc
 ## Session history
 
 _(one dated block per session: dates, champion at start → end, headline results)_
+
+### 2026-07-22 (session 5, afternoon — mandate: aux heads + geographic hierarchy, then
+### structural swings toward ≤100km; ENDED EARLY: Vast credit ran out)
+- Champion at start: 210.1 (box baseline 212.2) → at end: **~209.9** (07bd934); wins were
+  tail-fixers: country-hier + tau-smoothed country targets (mean 1079→~1000 best ever).
+- Experiments: 11 runs (baseline, 2 keeps ×2 confirms each, subdivision discard, 448
+  OOM+discard, retrieval-v1 discard, semantic-geocells NEVER RAN — box died first).
+- **BLOCKER at end: Vast account balance went NEGATIVE (-$0.02) mid-session** → host
+  force-stopped the box ("exited", restart queued-unavailable), new creates return None.
+  Also: "destroyed" instances can linger as `exited` zombies billing storage — always verify
+  with `vast.py ps` after destroys. TOP UP CREDIT before next session.
+- Infra learned: offer-id rent is RACY (find+create must be ONE process); race-rent 3 regional
+  candidates → first with working SSH wins (Estonia won in 2 min; scratchpad/race_rent.py
+  pattern worth folding into vast.py pre-loop next session). Cache tar on HF was val-only/
+  INCOMPLETE since S1 — rebuilt+re-uploaded correct 4.65GB tar (TAR_UPLOAD_OK); next setup
+  should be genuinely ~2-3 min. Boot filter: prefer hosts that pull the image fast; two duds
+  (proxy-only SSH; 10-min docker build) cost ~35 min.
+- Next session queue: 1) semantic geocells (code READY in tree), 2) ViT-H+ compute-matched
+  (bs48+dropout, GRAD_CHECKPOINT maybe), 3) sim-gated cluster retrieval retune, 4) PATCH_KEEP
+  0.6, 5) EVAL_EVERY 500 (harness-efficiency, ~50s/run). Honest 100km read: needs harness
+  changes (data/panoramas/budget) — raise with Josef at session start.
 
 ### 2026-07-22 (session 4, night — mandate: big swings)
 - Champion at start: 221.5 (baseline re-run 221.50 exactly) → at end: **210.1** (63e090c),
