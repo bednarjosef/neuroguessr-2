@@ -339,7 +339,7 @@ class GeoModel(nn.Module):
         k = min(topk, probs.size(-1))
         w, idx = probs.topk(k, dim=-1)
         if collect is not None:
-            collect.append(idx[:, :5].cpu())
+            collect.append(probs.topk(min(50, probs.size(-1)), dim=-1).indices.cpu())
         d_top1 = haversine_km_t(self.cell_lat[idx[:, :1]], self.cell_lon[idx[:, :1]],
                                 self.cell_lat[idx], self.cell_lon[idx])
         w = w * (d_top1 <= PRED_RADIUS_KM)
@@ -480,19 +480,29 @@ p0(f"Val quantization floor @ {N_CELLS} cells: {_floor:.1f} km "
 VAL_TRUE_COUNTRY = torch.tensor(_val_df["country_code"].fillna("??").astype(str)
                                 .map(lambda c: C2I.get(c, -1)).to_numpy(dtype=np.int64))
 CELL_COUNTRY_CPU = CELL_COUNTRY.cpu()
+VAL_LAT_CPU, VAL_LON_CPU = _vlat.cpu(), _vlon.cpu()
+CELL_LAT_CPU, CELL_LON_CPU = cell_lat.cpu(), cell_lon.cpu()
 
 
 def val_cell_metrics(collected):
     if not collected:
         return {}
-    top5 = torch.cat(collected)
-    true = VAL_TRUE_CELLS[:top5.size(0)]
-    top1 = (top5[:, 0] == true).float().mean().item()
-    top5a = (top5 == true.unsqueeze(1)).any(dim=1).float().mean().item()
-    country_acc = (CELL_COUNTRY_CPU[top5[:, 0]]
-                   == VAL_TRUE_COUNTRY[:top5.size(0)]).float().mean().item()
-    return {"cell_top1": top1, "cell_top5": top5a, "country_acc": country_acc,
-            "cell_top1_lift": top1 * N_CELLS, "cell_top5_lift": top5a * N_CELLS / 5}
+    topc = torch.cat(collected)                            # (n, 50), eval row order
+    true = VAL_TRUE_CELLS[:topc.size(0)]
+    out = {f"cell_top{K}": (topc[:, :K] == true.unsqueeze(1)).any(dim=1).float().mean().item()
+           for K in (1, 5, 10, 25, 50)}
+    out["country_acc"] = (CELL_COUNTRY_CPU[topc[:, 0]]
+                          == VAL_TRUE_COUNTRY[:topc.size(0)]).float().mean().item()
+    out["cell_top1_lift"] = out["cell_top1"] * N_CELLS
+    out["cell_top5_lift"] = out["cell_top5"] * N_CELLS / 5
+    # Retrieval-readiness: truth within 100 km of ANY top-K cell centroid. Unlike exact-cell
+    # topK this stays comparable when N_CELLS changes.
+    d = haversine_km_t(VAL_LAT_CPU[:topc.size(0)].unsqueeze(1),
+                       VAL_LON_CPU[:topc.size(0)].unsqueeze(1),
+                       CELL_LAT_CPU[topc], CELL_LON_CPU[topc])
+    out["region_recall_top10_100km"] = (d[:, :10].min(dim=1).values <= 100).float().mean().item()
+    out["region_recall_top50_100km"] = (d.min(dim=1).values <= 100).float().mean().item()
+    return out
 
 
 def quick_eval(tag, step):
@@ -506,6 +516,8 @@ def quick_eval(tag, step):
               f"acc@25km={m['acc_25km']*100:.1f}% acc@200km={m['acc_200km']*100:.1f}% "
               f"acc@2500km={m['acc_2500km']*100:.1f}% geoguessr={m['geoguessr_score']:.0f} "
               f"cell_top1={cm.get('cell_top1', 0)*100:.1f}% "
+              f"top10={cm.get('cell_top10', 0)*100:.1f}% top50={cm.get('cell_top50', 0)*100:.1f}% "
+              f"rr10@100={cm.get('region_recall_top10_100km', 0)*100:.1f}% "
               f"country={cm.get('country_acc', 0)*100:.1f}%", flush=True)
         if wandb_run is not None:
             wandb.log({f"val/{k}": v for k, v in {**m, **cm}.items()}, step=step)
