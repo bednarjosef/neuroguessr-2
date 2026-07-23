@@ -2,14 +2,14 @@
 <html><head><meta charset="utf-8"><title>neuroguessr-2 architecture</title>
 <style>
   * { box-sizing: border-box; margin: 0; }
-  body { width: 1700px; height: 1150px; padding: 22px 26px; background: #0f1219;
+  body { width: 1700px; height: 1000px; padding: 22px 26px; background: #0f1219;
          color: #e8ebf0; font: 13px/1.35 "DejaVu Sans", system-ui, sans-serif; }
   h1 { font-size: 22px; letter-spacing: -.3px; }
   h1 span { color: #6b7686; font-weight: 400; font-size: 14px; }
   .legend { display: flex; gap: 16px; margin: 9px 0 14px; font-size: 12px; align-items: center; }
   .chip { display: flex; align-items: center; gap: 6px; }
   .sw { width: 13px; height: 13px; border-radius: 3px; }
-  .grid { display: flex; gap: 16px; height: 985px; }
+  .grid { display: flex; gap: 16px; align-items: flex-start; }
   .col { display: flex; flex-direction: column; gap: 9px; }
   .box { border-radius: 7px; padding: 8px 11px; border: 1px solid; }
   .t { font-weight: 700; font-size: 13.5px; }
@@ -106,7 +106,7 @@
       (median ~42 cells, hard cap 400) → the candidate pool the matcher may search</div></div>
     <div class="note">Alone, this branch bottoms out at <b>~104 km</b> median — a cell is ~34 km
       across, and its centre is the best answer it can ever give.</div>
-    <div class="box frozen" style="margin-top:auto"><div class="t" style="font-size:12.5px">
+    <div class="box frozen"><div class="t" style="font-size:12.5px">
       why the gate is loose</div>
       <div class="d">A tight gate (top-5 cells) throws away the answer 40 % of the time.
       At 95 % mass the right cell is inside <b>92–98 %</b> of the time — so the whole
