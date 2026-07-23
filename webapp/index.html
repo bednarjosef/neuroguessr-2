@@ -45,10 +45,13 @@
     <div class="bar"><div class="fill" id="confbar"></div></div>
     <div class="row" style="margin-top:8px"><span class="muted">50% of belief within</span><span id="r50"></span></div>
     <div class="row"><span class="muted">90% of belief within</span><span id="r90"></span></div>
+    <div class="row"><span class="muted">engine</span><span id="engine"></span></div>
+    <div class="row"><span class="muted">visual match</span><span id="msim"></span></div>
     <div class="row"><span class="muted">inference</span><span id="ms"></span></div>
     <div style="margin-top:8px" id="countries"></div>
   </div>
-  <div class="hint">Pin = prediction. Model: DINOv3 ViT-L + LoRA, 5000 cells, val median ~100 km.</div>
+  <div class="hint">Pin = prediction (retrieval snap: nearest visual match among 1.2M
+    exemplars, gated by the classifier's belief region). Val median ~66 km, @1km ~10%.</div>
 </div>
 <div id="map"></div>
 
@@ -118,6 +121,8 @@ async function locate(blob) {
   $('r50').textContent = d.r50_km.toFixed(0) + ' km';
   $('r90').textContent = d.r90_km.toFixed(0) + ' km';
   $('ms').textContent = d.time_ms + ' ms';
+  $('engine').textContent = d.engine || 'classifier';
+  $('msim').textContent = d.match_sim != null ? (100 * d.match_sim).toFixed(1) + '%' : '—';
   $('countries').innerHTML = d.countries.map(c =>
       `<div class="ctry"><b>${c.code}</b><span>${(100 * c.p).toFixed(1)}%</span></div>`).join('');
   $('result').style.display = 'block';

@@ -378,6 +378,22 @@ _(anything about the box, dataset, VRAM ceilings, throughput, DINOv3 quirks, etc
 
 ## Session history
 
+### 2026-07-23 (night 2) — PHASE C1 place head (~$0.15): 65.7 -> 61.2 median, @25 36.0 -> 38.7%
+- Contrastive head (residual MLP 1024→2048→1024, zero-init out = identity start, NT-Xent
+  τ.07, 2 views/loc positives) trained on CACHED bb embeddings — no images, 10 epochs in
+  ~30s on a $0.44/hr 1x5090. **Heldout view-recall@1: 84.9% -> 99.0%** — raw DINOv3 CLS
+  fails same-place-different-heading 15% of the time; the head almost never.
+- Full-val (k1 snap m0.95 lam0.05 in projected space): **median 61.16 | @1 11.47% |
+  @25 38.69% | @200 71.55% | mean 390** — better than Phase A champion on every axis but
+  @200 (−1.1). Day total: 104.7 -> 61.2 median; @25 7.6 -> 38.7%; @1 0 -> 11.5%.
+- Artifacts: retrieval/train_place_head.py (committed); place_head.pt + train_proj.npy +
+  val_proj.npy in run_full2/retrieval_index/ (local). Head is 17MB — mobile-fine.
+- **Webapp now serves the full engine**: run2 ckpt + place head + mass-.95/λ.05/k1 snap
+  (engine tag + match-similarity shown; classifier readout kept as fallback + belief radii).
+  Spot checks: val#0 Uruguay 21 km, val#7 Sweden 3.4 km, ~950 ms CPU.
+- C2 still queued (patch-aware head + 512px re-index, needs images + 4 GPUs): in-pool
+  oracle 92-97% @25 says the road to ~50% runs through richer descriptors.
+
 ### 2026-07-23 (night) — RETRIEVAL PHASE A (all-local, $0): 79.7 -> 65.7 median; ceilings measured
 - **Ceilings on full val: ORACLE coverage @25km = 100.0%** (median nearest-train-image 2.2 km,
   @1km 38.5%); in-pool oracle @25: 92.1% (mass .8) / 97.6% (mass .95). ⇒ coverage and gate are
