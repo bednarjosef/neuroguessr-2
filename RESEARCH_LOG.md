@@ -378,6 +378,22 @@ _(anything about the box, dataset, VRAM ceilings, throughput, DINOv3 quirks, etc
 
 ## Session history
 
+### 2026-07-23 (night) — RETRIEVAL PHASE A (all-local, $0): 79.7 -> 65.7 median; ceilings measured
+- **Ceilings on full val: ORACLE coverage @25km = 100.0%** (median nearest-train-image 2.2 km,
+  @1km 38.5%); in-pool oracle @25: 92.1% (mass .8) / 97.6% (mass .95). ⇒ coverage and gate are
+  NOT constraints; the whole 36%->92% @25km gap is MATCHING quality (Phase B/C target).
+- **New champion readout: k=1 snap, mass 0.95 gate, soft prior sim+0.05·log p(cell): median
+  65.66 | @1 10.11% | @25 35.99% | @200 72.65%** (beats even the classifier's @200). Day total:
+  104.7 -> 65.7 official median. Consensus voting = dud (median-neutral, dulls @1/@25 — snap wins).
+- Infra: train lat/lon table reconstructed order-faithfully from HF parquet column reads
+  (datasets 5.0 contiguous-shard guarantee; 12-thread reads ~4 min; verification gate
+  reproduced box numbers exactly). Index now fully local: run_full2/retrieval_index/
+  (emb_bb train 2.4GB + val arrays + train_latlon.npz). Analysis: scratchpad analyze_phaseA.py,
+  results in this block; local CPU runtime ~4 min.
+- Next (Phase B, ~$2-3): 512px re-embed, CLS⊕mean-patch descriptor, query multi-crop, patch
+  rerank. (Phase C, ~$5): contrastive place head on frozen bb — 4 views/location = free
+  positives; 56 pts of in-pool @25 headroom says this is the highest-leverage move left.
+
 ### 2026-07-23 (later) — RETRIEVAL ENGINE v1: 104.9 -> 78.5 median, 0->10.2% @1km, 7.7->35.2% @25km
 - Built retrieval/ (embed_full.py sweep, engine.py mass-gated kNN, eval_retrieval.py 2-phase
   tuner). Swept 1.2M train imgs on the run-#2 box (~905 img/s 4x5090, 21.7 min) at TWO taps.
