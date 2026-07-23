@@ -77,6 +77,56 @@ class PairDataset(Dataset):
         return self._img(r1), self._img(r2), float(self.lat[l]), float(self.lon[l])
 
 
+class RegionBatchSampler(torch.utils.data.Sampler):
+    """Batches of locations drawn from ONE ~500km region.
+
+    With globally random anchors every in-batch negative is a different continent — an easy
+    task the classifier already solves (in-batch acc 0.81 by step 25). Restricting a batch to
+    one region makes the negatives 50-500 km away: visually similar, geographically wrong,
+    i.e. exactly the confusions retrieval has to break. Pairs closer than 50 km are still
+    masked out of the loss, so true neighbours are never punished.
+    """
+
+    def __init__(self, cell_of_loc, near_cells, n_batches, batch, seed):
+        self.near = near_cells
+        self.by_cell = {}
+        for l, c in enumerate(cell_of_loc):
+            self.by_cell.setdefault(int(c), []).append(l)
+        self.by_cell = {c: np.array(v, np.int64) for c, v in self.by_cell.items()}
+        self.cells = np.array(sorted(self.by_cell))
+        self.n_batches, self.batch = n_batches, batch
+        self.rng = np.random.default_rng(seed)
+        self.n_loc = len(cell_of_loc)
+
+    def __len__(self):
+        return self.n_batches
+
+    def __iter__(self):
+        for _ in range(self.n_batches):
+            c = int(self.rng.choice(self.cells))
+            pool = np.concatenate([self.by_cell[int(x)] for x in self.near[c]
+                                   if int(x) in self.by_cell])
+            if len(pool) < self.batch:
+                pool = self.rng.integers(0, self.n_loc, size=self.batch * 4)
+            yield list(self.rng.choice(pool, size=self.batch, replace=False))
+
+
+def build_region_index(uniq, cent, radius_km):
+    """Cell of every location + the cells within radius_km of each cell."""
+    lar, lor = np.radians(uniq[:, 0]), np.radians(uniq[:, 1])
+    unit = torch.tensor(np.stack([np.cos(lar) * np.cos(lor), np.cos(lar) * np.sin(lor),
+                                  np.sin(lar)], -1), dtype=torch.float32, device=device)
+    cell_of_loc = torch.empty(len(uniq), dtype=torch.long, device=device)
+    for i in range(0, len(uniq), 100_000):
+        cell_of_loc[i:i + 100_000] = (unit[i:i + 100_000] @ cent.T).argmax(1)
+    cos_r = float(np.cos(radius_km / EARTH))
+    near = {}
+    cc = (cent @ cent.T) >= cos_r
+    for c in range(cent.shape[0]):
+        near[c] = cc[c].nonzero().flatten().cpu().numpy()
+    return cell_of_loc.cpu().numpy(), near
+
+
 def build_locations(lat, lon, d_pos):
     """Location ids, row buckets, and per-location neighbour lists within d_pos km."""
     ll = np.stack([lat, lon], 1)
@@ -118,6 +168,8 @@ def main():
     ap.add_argument("--p-same", type=float, default=0.25)
     ap.add_argument("--warmup", type=int, default=150)
     ap.add_argument("--workers", type=int, default=12)
+    ap.add_argument("--region-km", type=float, default=500.0,
+                    help="batch anchors are drawn from one region of this radius (0 = global)")
     a = ap.parse_args()
     if WORLD > 1 and not dist.is_initialized():
         dist.init_process_group("nccl")
@@ -134,6 +186,7 @@ def main():
               f"{100*(nn_>0).mean():.1f}% have any ({time.time()-t0:.0f}s)", flush=True)
 
     ck = torch.load(a.ckpt, map_location="cpu", weights_only=False)
+    ck_cent = ck["buffers"]["centroids"].float()
     model = GeoModelEval(ck)
     model.load_from_ckpt(ck)
     model.to(device)
@@ -157,8 +210,19 @@ def main():
     ds = PairDataset(img_dir, df["path"].tolist(), order, starts, neigh, a.img_size,
                      a.p_same, seed=1234 + RANK)
     ds.lat, ds.lon = uniq[:, 0], uniq[:, 1]
-    dl = DataLoader(ds, batch_size=a.pairs, num_workers=a.workers, pin_memory=True,
-                    shuffle=True, drop_last=True, persistent_workers=True)
+    if a.region_km > 0:
+        cent = ck_cent.to(device)
+        cell_of_loc, near = build_region_index(uniq, cent, a.region_km)
+        if RANK == 0:
+            szs = np.array([len(v) for v in near.values()])
+            print(f"[r0] region batches: {a.region_km:.0f}km -> cells/region mean {szs.mean():.1f}",
+                  flush=True)
+        bs = RegionBatchSampler(cell_of_loc, near, 10 ** 6, a.pairs, seed=99 + RANK)
+        dl = DataLoader(ds, batch_sampler=bs, num_workers=a.workers, pin_memory=True,
+                        persistent_workers=True)
+    else:
+        dl = DataLoader(ds, batch_size=a.pairs, num_workers=a.workers, pin_memory=True,
+                        shuffle=True, drop_last=True, persistent_workers=True)
     mean_t = torch.tensor(IMAGENET_MEAN, device=device).view(1, 3, 1, 1)
     std_t = torch.tensor(IMAGENET_STD, device=device).view(1, 3, 1, 1)
 
@@ -196,8 +260,9 @@ def main():
             z = head(feats.float())                          # (2P, D), L2-normalised
             P = x1.shape[0]
             zg = gather(z)
-            lag = gather(la.to(device).float()).detach()
-            log = gather(lo.to(device).float()).detach()
+            # both images of a pair carry the anchor location's coords -> duplicate to 2P
+            lag = gather(torch.cat([la, la]).to(device).float()).detach()
+            log = gather(torch.cat([lo, lo]).to(device).float()).detach()
             G = zg.shape[0]
             # positive of global row i: the other half of its own rank's block
             base = torch.arange(G, device=device)

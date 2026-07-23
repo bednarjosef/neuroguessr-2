@@ -53,11 +53,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--index", default="retrieval_index")
     ap.add_argument("--ckpt", default="run_full2/ckpt_best.pt")
-    ap.add_argument("--gate", choices=["384", "512"], default="384")
+    ap.add_argument("--gate", default="384", help="tag of the val logits used to gate")
     ap.add_argument("--stages", default="ABCDF")
     ap.add_argument("--cap", type=int, default=400)
     ap.add_argument("--tag", default="s512", help="descriptor tag to load (s512 | s384)")
     ap.add_argument("--old", action="store_true", help="also load the old 384 index as a space")
+    ap.add_argument("--extra-tags", default="",
+                    help="also load cls/mean descriptors from these tags as <kind>_<tag> spaces")
     ap.add_argument("--heads", default="",
                     help="extra heads as name:file:base[,...] (base = cls|mean)")
     a = ap.parse_args()
@@ -123,6 +125,11 @@ def main():
     tg = a.tag
     add("cls", cat(d, f"c2_cls_train_{tg}_r"), cat(d, f"c2_cls_val_{tg}_r"))
     add("mean", cat(d, f"c2_mean_train_{tg}_r"), cat(d, f"c2_mean_val_{tg}_r"))
+    for xt in [x for x in a.extra_tags.split(",") if x]:
+        for kind in ("cls", "mean"):
+            tr_np = cat(d, f"c2_{kind}_train_{xt}_r")
+            if tr_np is not None:
+                add(f"{kind}_{xt}", tr_np, cat(d, f"c2_{kind}_val_{xt}_r"))
     if a.old:
         old_tr = cat(d, "emb_bb_train_r")
         if old_tr is not None:
