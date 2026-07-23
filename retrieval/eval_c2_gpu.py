@@ -56,6 +56,10 @@ def main():
     ap.add_argument("--gate", choices=["384", "512"], default="384")
     ap.add_argument("--stages", default="ABCDF")
     ap.add_argument("--cap", type=int, default=400)
+    ap.add_argument("--tag", default="s512", help="descriptor tag to load (s512 | s384)")
+    ap.add_argument("--old", action="store_true", help="also load the old 384 index as a space")
+    ap.add_argument("--heads", default="",
+                    help="extra heads as name:file:base[,...] (base = cls|mean)")
     a = ap.parse_args()
     d = a.index
 
@@ -116,16 +120,14 @@ def main():
             if vv:
                 valvars[name] = vv
 
-    fl = cat(d, "c2_clsflip_val_s512_r")
-    add("cls512", cat(d, "c2_cls_train_s512_r"), cat(d, "c2_cls_val_s512_r"),
-        {"flip": fl, "zoom": cat(d, "c2_clszoom_val_s512_r")} if fl is not None else None)
-    mfl = cat(d, "c2_meanflip_val_s512_r")
-    add("mean512", cat(d, "c2_mean_train_s512_r"), cat(d, "c2_mean_val_s512_r"),
-        {"flip": mfl, "zoom": cat(d, "c2_meanzoom_val_s512_r")} if mfl is not None else None)
-    old_tr = cat(d, "emb_bb_train_r")
-    if old_tr is not None:
-        old_va = cat(d, "c2_cls_val_s384_r")
-        add("old384", old_tr, old_va if old_va is not None else cat(d, "emb_bb_val_r"))
+    tg = a.tag
+    add("cls", cat(d, f"c2_cls_train_{tg}_r"), cat(d, f"c2_cls_val_{tg}_r"))
+    add("mean", cat(d, f"c2_mean_train_{tg}_r"), cat(d, f"c2_mean_val_{tg}_r"))
+    if a.old:
+        old_tr = cat(d, "emb_bb_train_r")
+        if old_tr is not None:
+            old_va = cat(d, "c2_cls_val_s384_r")
+            add("old384", old_tr, old_va if old_va is not None else cat(d, "emb_bb_val_r"))
 
     def head_space(name, fname, base):
         pth = os.path.join(d, fname)
@@ -143,18 +145,20 @@ def main():
             if base in valvars:
                 valvars[name] = {k: head(v) for k, v in valvars[base].items()}
 
-    head_space("geo10_cls512", "geo10_cls512.pt", "cls512")
-    head_space("geo10_mean512", "geo10_mean512.pt", "mean512")
-    head_space("geo10_old384", "geo_head_10.pt", "old384")
-    head_space("c1_old384", "place_head.pt", "old384")
+    for spec in [x for x in a.heads.split(",") if x]:
+        nm, fn, base = spec.split(":")
+        head_space(nm, fn, base)
+    if a.old:
+        head_space("geo10_old384", "geo_head_10.pt", "old384")
+        head_space("c1_old384", "place_head.pt", "old384")
     print(f"spaces: {list(spaces)} | VRAM {torch.cuda.memory_allocated()/2**30:.1f}GB "
           f"({time.time()-T0:.0f}s)", flush=True)
 
     # ---- regional descriptors (CPU tensor; only top-R rows are gathered per query)
     reg_all = reg_va = None
-    if os.path.exists(os.path.join(d, "c2_reg_train_s512_r0.npy")):
-        reg_all = torch.from_numpy(cat(d, "c2_reg_train_s512_r"))
-        reg_va = torch.from_numpy(cat(d, "c2_reg_val_s512_r")).float().to(device)
+    if os.path.exists(os.path.join(d, f"c2_reg_train_{a.tag}_r0.npy")):
+        reg_all = torch.from_numpy(cat(d, f"c2_reg_train_{a.tag}_r"))
+        reg_va = torch.from_numpy(cat(d, f"c2_reg_val_{a.tag}_r")).float().to(device)
         print(f"regions {tuple(reg_all.shape)} on CPU ({time.time()-T0:.0f}s)", flush=True)
 
     def run(cfgs, mass=0.95, tta=None, rerank=None):
