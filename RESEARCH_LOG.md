@@ -393,6 +393,14 @@ _(anything about the box, dataset, VRAM ceilings, throughput, DINOv3 quirks, etc
 - Day summary: **median 104.7 -> 49.0 | @25 7.6 -> 41.2% | @1 0 -> 11.6%**, retrieval total
   cost ~$1.6. Webapp serves the blend (engine tag retrieval-snap-geo, ~1.2s CPU/guess).
   Heads mirrored on HF (place_head, geo_head_25, geo_head_10 in fullrun2-ckpt/retrieval_index).
+- **Champion full distance profile (recomputed locally, reproduces the box grid exactly):**
+  mean 388.0 | p10 0.8 | p25 5.5 | p50 49.0 | p75 219 | p90 600 | p95 1219 | p99 8241 km;
+  @0.5km 8.0 | @5km 23.8 | @10km 31.8 | @50km 50.2 | @100km 60.7 | @500km 88.0 | @2500km 97.4%.
+  **GeoGuessr world-map score (5000*e^(-d/1492.7)): 4417/round avg, 4838 median round,
+  22085 per 5-round game; 68.7% of rounds >=4500, 43.5% >=4900.** Classifier-only readout
+  ~4274/round. Mean is tail-dominated (2.6% beyond 2500 km) -> mean is a country-accuracy
+  metric, not a fine-grained one. Script: scratchpad/score_champion.py; per-image distances
+  cached at run_full2/retrieval_index/champion_dist_km.npy.
 - Next for 50%: C2 patch-aware descriptors at 512px (in-pool oracle 92-97% still leaves
   50+ pts of matching headroom); possibly geo-head retrained on C2 descriptors, same recipe.
 
