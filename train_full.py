@@ -26,6 +26,7 @@ os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 import math
+import random
 import re
 import threading
 import time
@@ -96,6 +97,25 @@ COUNTRY_TAU_KM = 300.0
 # PIGEON trained at (500k/2000). Lowers the quantization floor the S5 H3 experiments hit.
 N_CELLS = int(os.environ.get("AR_CELLS", "5000"))
 KMEANS_ITERS = 25
+# Country-constrained cells: k-means runs per country (cell budget ∝ data share), so no cell
+# straddles a border and the cell->country term in the combined head is exact by construction
+# (PIGEON's semantic-cell edge; measured 2026-07-23 that straddling mislabels the country term).
+CC_CELLS = os.environ.get("AR_CC_CELLS", "1") == "1"
+# Staggered tessellation B (S6 keep, -4.0 km): second fine head on a different k-means seed;
+# the readout mixes both centroid sets -> effective cells = Voronoi intersection (dithered
+# quantization, halves the effective floor without starving either head of data).
+STAGGER = os.environ.get("AR_STAGGER", "1") == "1"
+# MSL (S6 keep, -6.2 km): differentiate through the ACTUAL prediction rule — softmax over
+# cells -> prob-weighted spherical mean -> geodesic km to truth — wrapped in a REDESCENDING
+# robust loss (Geman-McClure d^2/(d^2+s^2)): gradient vanishes on hopeless far misses so the
+# model spends capacity on the fixable middle mass (= the median), and shading mass across
+# neighboring cells learns sub-cell interpolation (attacks the quantization floor).
+MSL_W = float(os.environ.get("AR_MSL_W", "0.5"))
+MSL_S_KM = 300.0
+MSL_TEMP = 0.5                 # match PRED_TEMP so training matches the sharpened readout
+# Geo-safe train-time augmentation (exp 15: RRC 0.5-1.0 area + jitter 0.15, NO flips —
+# neutral at 0.5 epochs, parked for long runs; 3 epochs x 1.2M is that long run).
+AUG = os.environ.get("AR_AUG", "1") == "1"
 SMOOTH_TAU_KM = 75.0
 PRED_TOPK = 16
 PRED_TEMP = 0.5
@@ -179,27 +199,57 @@ def assign_cells(pts, centroids, chunk=100_000):
 # Geocells (disk-cached; rank 0 builds, other ranks read the cache)
 # ---------------------------------------------------------------------------
 
-def build_geocells(train_df, n_cells, iters):
+def _kmeans_sphere(pts, k, iters, seed):
+    k = max(1, min(int(k), pts.size(0)))
+    g = torch.Generator(device=device).manual_seed(int(seed) % (2 ** 62))
+    idx = torch.randperm(pts.size(0), generator=g, device=device)[:k]
+    centroids = pts[idx].clone()
+    for _ in range(iters):
+        assign = assign_cells(pts, centroids)
+        new = torch.zeros_like(centroids)
+        new.index_add_(0, assign, pts)
+        counts = torch.zeros(k, device=device).index_add_(
+            0, assign, torch.ones(pts.size(0), device=device))
+        mask = counts > 0
+        new[mask] = F.normalize(new[mask], dim=-1)
+        centroids[mask] = new[mask]
+    return centroids
+
+
+def build_geocells(train_df, n_cells, iters, seed=0, by_country=False):
     from prepare import CACHE_DIR
-    _ck = os.path.join(CACHE_DIR, f"geocells_{n_cells}_{iters}_{len(train_df)}.pt")
+    _sfx = ("" if seed == 0 else f"_s{seed}") + ("_cc" if by_country else "")
+    _ck = os.path.join(CACHE_DIR, f"geocells_{n_cells}_{iters}_{len(train_df)}{_sfx}.pt")
     if os.path.exists(_ck):
         d = torch.load(_ck, map_location=device)
         return d["centroids"], d["cell_lat"], d["cell_lon"]
     lat = torch.tensor(train_df["latitude"].to_numpy(), dtype=torch.float32, device=device)
     lon = torch.tensor(train_df["longitude"].to_numpy(), dtype=torch.float32, device=device)
     pts = latlon_to_unit(lat, lon)
-    g = torch.Generator(device=device).manual_seed(0)
-    idx = torch.randperm(pts.size(0), generator=g, device=device)[:n_cells]
-    centroids = pts[idx].clone()
-    for _ in range(iters):
-        assign = assign_cells(pts, centroids)
-        new = torch.zeros_like(centroids)
-        new.index_add_(0, assign, pts)
-        counts = torch.zeros(n_cells, device=device).index_add_(
-            0, assign, torch.ones_like(lat))
-        mask = counts > 0
-        new[mask] = F.normalize(new[mask], dim=-1)
-        centroids[mask] = new[mask]
+    if not by_country:
+        centroids = _kmeans_sphere(pts, n_cells, iters, seed)
+    else:
+        # Per-country budgets by largest remainder (min 1, max #points), then k-means inside
+        # each country separately — cells can never straddle a border.
+        codes = train_df["country_code"].fillna("??").astype(str).to_numpy()
+        uniq, counts = np.unique(codes, return_counts=True)
+        quota = counts.astype(np.float64) / counts.sum() * n_cells
+        budget = np.minimum(np.maximum(1, np.floor(quota).astype(np.int64)), counts)
+        frac_order = np.argsort(-(quota - np.floor(quota)))
+        i = 0
+        while budget.sum() < n_cells and i < 10 * len(uniq):
+            j = frac_order[i % len(uniq)]
+            if budget[j] < counts[j]:
+                budget[j] += 1
+            i += 1
+        while budget.sum() > n_cells and budget.max() > 1:
+            budget[int(np.argmax(budget))] -= 1
+        parts = []
+        for j, c in enumerate(uniq):
+            sub = pts[torch.from_numpy(codes == c).to(device)]
+            parts.append(_kmeans_sphere(sub, int(budget[j]), iters, seed * 1_000_003 + j + 1))
+        centroids = torch.cat(parts)
+        assert centroids.size(0) == n_cells, f"cc cells {centroids.size(0)} != {n_cells}"
     cell_lat, cell_lon = unit_to_latlon(centroids)
     centroids, cell_lat, cell_lon = centroids.detach(), cell_lat.detach(), cell_lon.detach()
     try:
@@ -216,6 +266,7 @@ class GeoDataset(Dataset):
     def __init__(self, split, size):
         self.img_dir, self.df = load_index(split)
         self.size = size
+        self.augment = AUG and split == "train"
         self.lat = self.df["latitude"].to_numpy(dtype=np.float32)
         self.lon = self.df["longitude"].to_numpy(dtype=np.float32)
         self.paths = self.df["path"].tolist()
@@ -226,8 +277,19 @@ class GeoDataset(Dataset):
         return len(self.paths)
 
     def __getitem__(self, i):
-        from PIL import Image
-        img = open_image(self.img_dir, self.paths[i]).resize((self.size, self.size), Image.BICUBIC)
+        from PIL import Image, ImageEnhance
+        img = open_image(self.img_dir, self.paths[i])
+        if self.augment:
+            w, h = img.size
+            side = max(1, int(min(w, h) * math.sqrt(random.uniform(0.5, 1.0))))
+            x0 = random.randint(0, w - side)
+            y0 = random.randint(0, h - side)
+            img = img.crop((x0, y0, x0 + side, y0 + side))
+            img = img.resize((self.size, self.size), Image.BICUBIC)
+            for enh in (ImageEnhance.Brightness, ImageEnhance.Contrast, ImageEnhance.Color):
+                img = enh(img).enhance(random.uniform(0.85, 1.15))
+        else:
+            img = img.resize((self.size, self.size), Image.BICUBIC)
         arr = torch.from_numpy(np.asarray(img, dtype=np.uint8)).permute(2, 0, 1)
         return arr, self.lat[i], self.lon[i], self.country[i]
 
@@ -249,7 +311,8 @@ def normalize_batch(imgs_uint8):
 # ---------------------------------------------------------------------------
 
 class GeoModel(nn.Module):
-    def __init__(self, centroids, cell_lat, cell_lon, hier=(), cell_country=None, n_country=0):
+    def __init__(self, centroids, cell_lat, cell_lon, hier=(), cell_country=None, n_country=0,
+                 tess_b=None):
         super().__init__()
         from transformers import AutoModel
         from peft import LoraConfig, get_peft_model
@@ -274,6 +337,14 @@ class GeoModel(nn.Module):
             nn.Dropout(HEAD_DROPOUT),
         )
         self.fine_head = nn.Linear(HEAD_HIDDEN, N_CELLS)
+        # Staggered tessellation B: independent fine head on a different k-means seed; the
+        # combined readout mixes both centroid sets -> effective cells = Voronoi intersection.
+        self.fine_head_b = nn.Linear(HEAD_HIDDEN, N_CELLS) if tess_b is not None else None
+        if tess_b is not None:
+            cb, cblat, cblon = tess_b
+            self.register_buffer("centroids_b", cb)
+            self.register_buffer("cell_lat_b", cblat)
+            self.register_buffer("cell_lon_b", cblon)
         self.coarse_heads = nn.ModuleList([nn.Linear(HEAD_HIDDEN, c) for c in HIER_CELLS])
         self.country_head = nn.Linear(HEAD_HIDDEN, n_country) if n_country else None
         if cell_country is not None:
@@ -327,24 +398,34 @@ class GeoModel(nn.Module):
         if self.country_head is not None:
             country = self.country_head(h)
             comb = comb + F.log_softmax(country, dim=-1)[:, self.cell_country]
-        return comb, coarse, country
+        fine_b = self.fine_head_b(h) if self.fine_head_b is not None else None
+        return comb, coarse, country, fine_b
 
     def logits(self, pixel_values):
-        return self.head_logits(self.features(pixel_values).float())[0]
+        out = self.head_logits(self.features(pixel_values).float())
+        return out[0], out[3]
 
     @torch.no_grad()
     def predict_latlon(self, pixel_values, topk=PRED_TOPK, collect=None):
-        logits = self.logits(pixel_values)
-        probs = F.softmax(logits.float() / PRED_TEMP, dim=-1)
-        k = min(topk, probs.size(-1))
-        w, idx = probs.topk(k, dim=-1)
+        logits_a, logits_b = self.logits(pixel_values)
+        probs = F.softmax(logits_a.float() / PRED_TEMP, dim=-1)
         if collect is not None:
             collect.append(probs.topk(min(50, probs.size(-1)), dim=-1).indices.cpu())
-        d_top1 = haversine_km_t(self.cell_lat[idx[:, :1]], self.cell_lon[idx[:, :1]],
-                                self.cell_lat[idx], self.cell_lon[idx])
+        if logits_b is not None:   # union of both tessellations, half weight each
+            probs_b = F.softmax(logits_b.float() / PRED_TEMP, dim=-1)
+            probs = torch.cat([probs * 0.5, probs_b * 0.5], dim=-1)
+            all_lat = torch.cat([self.cell_lat, self.cell_lat_b])
+            all_lon = torch.cat([self.cell_lon, self.cell_lon_b])
+            all_cents = torch.cat([self.centroids, self.centroids_b])
+        else:
+            all_lat, all_lon, all_cents = self.cell_lat, self.cell_lon, self.centroids
+        k = min(2 * topk if logits_b is not None else topk, probs.size(-1))
+        w, idx = probs.topk(k, dim=-1)
+        d_top1 = haversine_km_t(all_lat[idx[:, :1]], all_lon[idx[:, :1]],
+                                all_lat[idx], all_lon[idx])
         w = w * (d_top1 <= PRED_RADIUS_KM)
         w = w / w.sum(dim=-1, keepdim=True).clamp(min=1e-9)
-        cents = self.centroids[idx]
+        cents = all_cents[idx]
         v = (w.unsqueeze(-1) * cents).sum(dim=1)
         return unit_to_latlon(v)
 
@@ -364,9 +445,14 @@ p0(f"Train pool: {N_TRAIN_IMGS} images | Backbone: {MODEL_NAME} @ {IMG_SIZE}px |
    f"{WORLD} GPU(s) x bs{DEVICE_BATCH_SIZE} = global {GLOBAL_BS}")
 
 with rank0_first():
-    centroids, cell_lat, cell_lon = build_geocells(train_df, N_CELLS, KMEANS_ITERS)
+    centroids, cell_lat, cell_lon = build_geocells(train_df, N_CELLS, KMEANS_ITERS,
+                                                   by_country=CC_CELLS)
+    TESS_B = (build_geocells(train_df, N_CELLS, KMEANS_ITERS, seed=1, by_country=CC_CELLS)
+              if STAGGER else None)
     hier = [build_geocells(train_df, c, KMEANS_ITERS) for c in HIER_CELLS]
-p0(f"Geocells: {N_CELLS} fine + hierarchy {HIER_CELLS} (k-means, {KMEANS_ITERS} iters)")
+p0(f"Geocells: {N_CELLS} fine{' (country-constrained)' if CC_CELLS else ''}"
+   f"{' x2 staggered' if STAGGER else ''} + hierarchy {HIER_CELLS} "
+   f"(k-means, {KMEANS_ITERS} iters) | MSL_W={MSL_W} | aug={'on' if AUG else 'off'}")
 
 _cc = train_df["country_code"].fillna("??").astype(str)
 COUNTRIES = sorted(_cc.unique().tolist())
@@ -390,16 +476,19 @@ p0(f"Countries: {N_COUNTRY} (majority-vote parents for {N_CELLS} cells)")
 
 with rank0_first():
     model = GeoModel(centroids, cell_lat, cell_lon, hier,
-                     cell_country=CELL_COUNTRY, n_country=N_COUNTRY).to(device)
+                     cell_country=CELL_COUNTRY, n_country=N_COUNTRY, tess_b=TESS_B).to(device)
 model.trunk.to(torch.float32); model.fine_head.to(torch.float32)
 model.coarse_heads.to(torch.float32)
 if model.country_head is not None:
     model.country_head.to(torch.float32)
+if model.fine_head_b is not None:
+    model.fine_head_b.to(torch.float32)
 
 lora_params = [p for n, p in model.backbone.named_parameters() if p.requires_grad]
 head_params = (list(model.trunk.parameters()) + list(model.fine_head.parameters())
                + list(model.coarse_heads.parameters())
-               + (list(model.country_head.parameters()) if model.country_head is not None else []))
+               + (list(model.country_head.parameters()) if model.country_head is not None else [])
+               + (list(model.fine_head_b.parameters()) if model.fine_head_b is not None else []))
 trainable_params = lora_params + head_params
 n_train_params = sum(p.numel() for p in trainable_params)
 p0(f"Trainable params: {n_train_params/1e6:.2f}M (LoRA {sum(p.numel() for p in lora_params)/1e6:.2f}M "
@@ -571,7 +660,8 @@ def save_ckpt(tag, step, epoch, batches_in_epoch, best_median):
         "wandb_id": WANDB_ID,
         "config": {"n_cells": N_CELLS, "hier": HIER_CELLS, "epochs": EPOCHS,
                    "world": WORLD, "bs": DEVICE_BATCH_SIZE, "img": IMG_SIZE,
-                   "model": MODEL_NAME, "lora_r": LORA_R, "n_train": N_TRAIN_IMGS},
+                   "model": MODEL_NAME, "lora_r": LORA_R, "n_train": N_TRAIN_IMGS,
+                   "stagger": STAGGER, "cc_cells": CC_CELLS, "msl_w": MSL_W, "aug": AUG},
     }
     path = os.path.join(RUN_DIR, f"ckpt_{tag}.pt")
     tmp = path + ".tmp"
@@ -595,6 +685,8 @@ def try_resume():
             return 0, 0, 0, float("inf"), None
     ck = torch.load(path, map_location="cpu")
     cfg = ck["config"]
+    assert (cfg.get("stagger", False) == STAGGER and cfg.get("cc_cells", False) == CC_CELLS), \
+        f"checkpoint stagger/cc_cells mismatch: {cfg} vs stagger={STAGGER} cc={CC_CELLS}"
     assert cfg["n_cells"] == N_CELLS and cfg["world"] == WORLD and cfg["bs"] == DEVICE_BATCH_SIZE, \
         f"checkpoint config mismatch: {cfg} vs cells={N_CELLS} world={WORLD} bs={DEVICE_BATCH_SIZE}"
     assert ck["countries"] == COUNTRIES, "country vocabulary changed between runs"
@@ -634,7 +726,9 @@ if is_main:
                 if k.isupper() and isinstance(v, (int, float, str, bool, tuple, list))}
         _cfg["n_train_params_M"] = round(n_train_params / 1e6, 2)
         WANDB_ID = (_resume_wandb or os.environ.get("AR_RUN_NAME")
-                    or f"fullrun-{N_CELLS}c-{EPOCHS}ep-w{WORLD}")
+                    or (f"fullrun-{N_CELLS}c-{EPOCHS}ep-w{WORLD}"
+                        + ("-msl" if MSL_W > 0 else "") + ("-stag" if STAGGER else "")
+                        + ("-cc" if CC_CELLS else "") + ("-aug" if AUG else "")))
         WANDB_ID = re.sub(r"[^a-zA-Z0-9_-]", "-", WANDB_ID)
         wandb_mode = "online" if os.environ.get("WANDB_API_KEY") else "disabled"
         wandb_run = wandb.init(project=WANDB_PROJECT, config=_cfg, mode=wandb_mode,
@@ -656,8 +750,8 @@ _wb = collate([train_ds[i] for i in range(DEVICE_BATCH_SIZE)])
 _x = normalize_batch(_wb[0])
 with autocast_ctx:
     _feats = model.features(_x)
-_logits, _, _ = model.head_logits(_feats.float())
-_logits.mean().backward()
+_logits, _, _, _fb = model.head_logits(_feats.float())
+(_logits.mean() + (_fb.mean() if _fb is not None else 0.0)).backward()
 optimizer.zero_grad(set_to_none=True)
 model.eval()
 with torch.no_grad(), autocast_ctx:
@@ -692,10 +786,13 @@ try:
             blat = blat.to(device); blon = blon.to(device); bctry = bctry.to(device)
             with autocast_ctx:
                 feats = model.features(x)
-            logits, coarse_logits, country_logits = model.head_logits(feats.float())
+            logits, coarse_logits, country_logits, fine_b = model.head_logits(feats.float())
             tgt = soft_targets(blat, blon, cell_lat, cell_lon, SMOOTH_TAU_KM)
             logp = F.log_softmax(logits, dim=-1)
             loss = -(tgt * logp).sum(dim=-1).mean()
+            if fine_b is not None:
+                tgt_b = soft_targets(blat, blon, TESS_B[1], TESS_B[2], SMOOTH_TAU_KM)
+                loss = loss + -(tgt_b * F.log_softmax(fine_b, dim=-1)).sum(dim=-1).mean()
             for l, cl in enumerate(coarse_logits):
                 tgt_l = soft_targets(blat, blon, getattr(model, f"coarse_lat_{l}"),
                                      getattr(model, f"coarse_lon_{l}"), SMOOTH_TAU_KM)
@@ -703,6 +800,16 @@ try:
             if country_logits is not None:
                 tgt_c = soft_targets(blat, blon, COUNTRY_LAT, COUNTRY_LON, COUNTRY_TAU_KM)
                 loss = loss + COUNTRY_LOSS_W * -(tgt_c * F.log_softmax(country_logits, dim=-1)).sum(dim=-1).mean()
+            if MSL_W > 0:
+                # MSL: differentiable spherical-mean prediction, redescending km loss
+                p_msl = F.softmax(logits / MSL_TEMP, dim=-1)
+                v_msl = p_msl @ model.centroids
+                v_msl = v_msl / v_msl.norm(dim=-1, keepdim=True).clamp(min=1e-6)
+                u_true = latlon_to_unit(blat, blon)
+                cosang = (v_msl * u_true).sum(dim=-1).clamp(-1 + 1e-7, 1 - 1e-7)
+                d_msl = EARTH_RADIUS_KM * torch.acos(cosang)
+                gm = d_msl.pow(2) / (d_msl.pow(2) + MSL_S_KM ** 2)
+                loss = loss + MSL_W * gm.mean()
             loss.backward()
             loss_val = loss.item()
 
