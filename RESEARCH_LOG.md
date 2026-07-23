@@ -184,6 +184,35 @@ _(each entry: what was tried, what happened, and the takeaway so it isn't retrie
 
 _(carry unfinished/promising directions forward across sessions)_
 
+### Measured 2026-07-23 — retrieval-readiness of the full-run model (ckpt_best, ALL 2998 val, local CPU)
+
+Full logit cache + analysis script live in `run_full/val_analysis/` (re-slicing is instant, no re-inference).
+Sanity: reproduced official numbers (median 104.4, @25km 7.6%). Key facts, all on 5000 k-means cells:
+
+- **Exact-cell hit**: top1 27.6 / top5 57.0 / top10 70.0 / top25 84.3 / top50 91.6. **Median rank of the
+  true cell = 3.**
+- **Region recall (truth within R of ANY top-K centroid)** — the retrieval KPI, cell-count invariant:
+  top10@100km **75.6%**, top25@100km 83.6, top50@100km 88.4, top50@200km **95.3%**.
+- **Honest 90%-posterior-mass set**: median only **42 cells**, covers truth-within-100km **91.6%** of
+  the time → a mass-based search region beats fixed top-K for retrieval.
+- **Conditional medians**: top5-HIT cases (57%) sit at 67 km (cell-floor territory — exactly what a
+  retrieval stage converts to <25km); top5-MISS cases already at 243 km median → retrieval can't
+  make them worse. Asymmetry confirmed empirically.
+- **Perfect-snap ceiling: @25km = 36.2% even with a PERFECT top-1 classifier** (5000-cell tessellation
+  limit; PIGEON's headline is 40.4 with panoramas, 24.2 single-image). So @25km needs BOTH better
+  classification AND floor-breaking (finer cells raise the ceiling; retrieval/offset removes it).
+- PIGEON facts (arXiv 2307.05845 ablations): their smoothing == ours exactly (softmax(-d/τ), τ=75);
+  semantic geocells worth ~10km median vs naive grids (k-means already density-adaptive, so our gap
+  is only border-purity); refinement = the @1km mechanism (5.4%→1.3% without) but only −5pts @25km;
+  panoramas = +16pts @25km (closed to us by mobile constraint — single-image PIGEON: 131 km median,
+  24.2% @25km, i.e. WE beat their single-image median already).
+- Eval panels (train.py + train_full.py) now log cell_top10/25/50 + region_recall_top10/50@100km.
+
+New cheap ideas from this: **country-constrained k-means cells** (per-country clustering, budget ∝ data
+share — makes the cell→country term exact, PIGEON's real semantic-cell edge); **confidence-adaptive
+readout** (snap to top-1 data centroid when confident instead of spherical-mean smearing — @25km
+booster, zero training cost).
+
 ### Invented 2026-07-22 (during full run) — novel mechanisms, ranked; designed from OUR evidence
 
 1. **MSL — Median-Seeking Loss.** Differentiable prediction: v = normalize(Σ softmax(logits/T)·centroid),
