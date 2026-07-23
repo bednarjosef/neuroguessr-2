@@ -52,10 +52,12 @@ def main():
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--tau", type=float, default=0.07)
     ap.add_argument("--out", default="geo_head.pt")
+    ap.add_argument("--emb-prefix", default="emb_bb_train_r",
+                    help="shard prefix of the index embeddings to train on")
     a = ap.parse_args()
 
     print("loading…", flush=True)
-    emb = torch.from_numpy(cat_shards(a.index_dir, "emb_bb_train_r")).to(device)
+    emb = torch.from_numpy(cat_shards(a.index_dir, a.emb_prefix)).to(device)
     emb = F.normalize(emb.float(), dim=-1)
     z = np.load(os.path.join(a.index_dir, "train_latlon.npz"))
     ll = np.stack([z["lat"], z["lon"]], 1)
@@ -102,7 +104,8 @@ def main():
             best = (zq @ zp.T).argmax(1)
             return float(hit_ok[torch.arange(len(q_rows), device=device), best].float().mean())
 
-    head = PlaceHead().to(device)
+    dim = emb.shape[1]
+    head = PlaceHead(dim, 2 * dim).to(device)
     opt = torch.optim.AdamW(head.parameters(), lr=a.lr, weight_decay=1e-4)
     spe = len(train_locs) // a.locs_per_batch
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=a.epochs * spe)
@@ -155,7 +158,7 @@ def main():
                       flush=True)
         print(f"epoch {ep+1}: probe near-recall@1 = {probe(head):.4f}", flush=True)
 
-    torch.save({"state_dict": head.state_dict(), "dim": 1024, "hidden": 2048,
+    torch.save({"state_dict": head.state_dict(), "dim": dim, "hidden": 2 * dim,
                 "d_pos": a.d_pos, "p_same": a.p_same},
                os.path.join(a.index_dir, a.out))
     print(f"saved {a.out}", flush=True)

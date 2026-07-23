@@ -345,7 +345,10 @@ def cmd_sync(a) -> None:
     print(f"uploading repo -> {REMOTE_DIR} (tar over ssh)…")
     excludes = " ".join(f"--exclude=./{x}" for x in
                         (".venv", ".git", ".vast_state.json", "results.tsv",
-                         "__pycache__", "findings.md", "dev", ".env"))
+                         "__pycache__", "findings.md", "dev", ".env",
+                         # local run dirs hold multi-GB checkpoints/indices — never upload
+                         # them (fetch checkpoints from HF on the box instead)
+                         "run_full", "run_full2", "run_smoke", ".inductor"))
     remote = " ".join(ssh_base(s)) + f" 'mkdir -p {REMOTE_DIR} && tar xzf - -C {REMOTE_DIR}'"
     subprocess.run(f"tar czf - {excludes} -C {REPO} . | {remote}", shell=True, check=True)
     print("upload complete.")
