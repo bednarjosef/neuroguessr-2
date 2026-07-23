@@ -450,7 +450,8 @@ FORWARD_ENV_KEYS = ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "WANDB_API_KEY",
                     "AR_N_TRAIN", "AR_N_VAL", "AR_QUICK_VAL_N",
                     # full-run knobs (train_full.py / raw download path)
                     "AR_RAW_TRAIN", "AR_DOWNLOAD_WORKERS", "AR_EPOCHS", "AR_CELLS",
-                    "AR_RESUME", "AR_CKPT_HF_REPO", "AR_MAX_STEPS")
+                    "AR_RESUME", "AR_CKPT_HF_REPO", "AR_MAX_STEPS",
+                    "AR_CC_CELLS", "AR_STAGGER", "AR_MSL_W", "AR_AUG")
 
 
 def _load_dotenv() -> dict:

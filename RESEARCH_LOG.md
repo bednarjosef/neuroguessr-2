@@ -20,6 +20,11 @@ Objective: **`median_km`** (median great-circle error on the val split), **lower
 - **Separate lineage — FULL-RUN model (train_full.py): official 104.66 on full val** (best
   subset eval 99.91), ckpt local at run_full/ckpt_best.pt + HF josefbednar/neuroguessr-fullrun-ckpt;
   served by webapp/server.py.
+- **Full run #2 (2026-07-23, MSL+stagger+cc-cells+aug): official 104.37 — a WASH vs run #1**
+  (mean 479 worse, @25km 7.8 slightly better, cell_top1 26.2 lower; best quick 102.54). Ckpt
+  local run_full2/ckpt_best.pt + HF josefbednar/neuroguessr-fullrun2-ckpt. Lesson: ratchet
+  keeps did NOT stack at scale; two different recipes both land ~104 ⇒ 3-epoch regime ceiling.
+  Next levers: more epochs (ckpt-chain) and the retrieval stage (built in retrieval/).
 - **train.py commit:** see autoresearch/2026-07-22-ideas branch (S6 keeps committed there;
   master carries the same file)
 - **one-line:** session-4 stack + **country-level hierarchy** (w=0.5, majority-vote parents)
@@ -363,6 +368,23 @@ _(anything about the box, dataset, VRAM ceilings, throughput, DINOv3 quirks, etc
 ---
 
 ## Session history
+
+### 2026-07-23 — FULL RUN #2 (Bulgaria 4x5090 $1.815/hr, 62 min train): official 104.37 (wash)
+- Recipe = run #1 + MSL(0.5/300/T.5) + staggered tessellation B + country-constrained k-means
+  (5000 cells, floor 33.8 vs 34.2 plain) + parked RRC 0.5-1.0/jitter-.15 aug. 15.16M trainable.
+- Full-val final: median 104.37 | mean 478.7 | @25 7.77% | @200 70.1% | country-run best quick
+  102.54. vs run #1: median −0.3, mean +23, @25 +0.2, cell_top1 −1.2. **A wash.**
+- Lessons: (1) ratchet keeps don't stack at full scale either (S6 integration lesson repeats);
+  (2) two different recipes → same ~104 ⇒ the 3-epoch/LoRA-r16 classifier regime is the
+  binding constraint, not the loss/tessellation; (3) aug at 3 epochs ≠ the long-run it was
+  parked for — earn it back at 5+ epochs or drop it; (4) this box did 1040 img/s trained /
+  ~905 swept (dlperf 647) — 2x run #1's effective throughput at 75% of the $/hr.
+- Infra: stale run-#1 ckpts uploaded by repo sync tripped the new stagger/cc resume assert
+  (assert did its job — delete run_full/*.pt on the box before a fresh-architecture launch).
+  W&B netrc interpolation worked (run live from step 0). Race-rent v2: ssh-url shows the
+  PROXY until direct port provisioning lands — poll for the flip, don't reject on first sight.
+- Retrieval-readiness at final: cell_top1 26.2 / top10 70.5 / rr10@100 75.7 — same regime as
+  run #1 ⇒ retrieval index built on run2 ckpt_best (stagger head + aug-trained embeddings).
 
 ### 2026-07-22 evening — S6 idea-batch ratchet (Italy 1x5090, 8 exps + integration): 215.65 -> 205.46
 - **KEEP: MSL** (differentiable spherical-mean + Geman-McClure km loss, w0.5/s300/T0.5):

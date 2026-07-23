@@ -59,8 +59,11 @@ the torchrun part (`/venv/main/bin/python train_full.py`) and use `CUDA_VISIBLE_
 ### 3. Launch the real run (nohup — NEVER via `vast.py exp`, SSH drops would look like crashes)
 
 ```bash
+# NOTE: WANDB_API_KEY lives in ~/.netrc, NOT .env — interpolate it explicitly or W&B
+# silently disables (run #1 lesson):
+WKEY=$(python3 -c "import netrc; print(netrc.netrc().authenticators('api.wandb.ai')[2])")
 source .env && python vast.py run "cd /root/auto && mkdir -p run_full && env \
-  HF_TOKEN=$HF_TOKEN WANDB_API_KEY=$WANDB_API_KEY \
+  HF_TOKEN=$HF_TOKEN WANDB_API_KEY=$WKEY \
   AR_CKPT_HF_REPO=josefbednar/neuroguessr-fullrun-ckpt \
   AR_TIME_BUDGET=21600 PYTHONPATH=/root/auto TORCHINDUCTOR_CACHE_DIR=/root/auto/.inductor \
   CUDA_VISIBLE_DEVICES=0,1,2,3 nohup /venv/main/bin/python -m torch.distributed.run \
