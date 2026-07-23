@@ -1,0 +1,222 @@
+[21:03:39] rows: 1198072
+[21:03:39] === 1/6 train index sweep @512px ===
+
+*****************************************
+Setting OMP_NUM_THREADS environment variable for each process to be 1 in default, to avoid your system being overloaded, please further tune the variable for optimal performance in your application as needed. 
+*****************************************
+[r2] rows 599036:898554 of 1198072 @ 512px tag=s512
+[r1] rows 299518:599036 of 1198072 @ 512px tag=s512
+[r0] rows 0:299518 of 1198072 @ 512px tag=s512
+[r3] rows 898554:1198072 of 1198072 @ 512px tag=s512
+[r0] wrote train_latlon.npz (1198072 rows)
+Loading weights:   0%|          | 0/415 [00:00<?, ?it/s]Loading weights:   0%|          | 0/415 [00:00<?, ?it/s]Loading weights: 100%|██████████| 415/415 [00:00<00:00, 7347.62it/s]
+Loading weights:   0%|          | 0/415 [00:00<?, ?it/s]Loading weights: 100%|██████████| 415/415 [00:00<00:00, 7623.60it/s]
+Loading weights:   0%|          | 0/415 [00:00<?, ?it/s]Loading weights: 100%|██████████| 415/415 [00:00<00:00, 7035.69it/s]
+Loading weights: 100%|██████████| 415/415 [00:00<00:00, 7321.20it/s]
+[r0] model ready: 5000 cells, step 10692, best 102.54 km
+[r3] fit regional PCA (1024, 128) in 15s
+[r2] fit regional PCA (1024, 128) in 15s
+[r1] fit regional PCA (1024, 128) in 15s
+[r0] fit regional PCA (1024, 128) in 15s
+[r2] DONE 299518 rows in 39.7 min
+[r0] DONE 299518 rows in 39.7 min
+[rank0]:[W723 21:43:49.692775083 ProcessGroupNCCL.cpp:1647] Warning: WARNING: destroy_process_group() was not called before program exit, which can leak resources. For more info, please see https://pytorch.org/docs/stable/distributed.html#shutdown (function operator())
+[r1] DONE 299518 rows in 40.0 min
+[r3] DONE 299518 rows in 40.1 min
+[21:44:15] === 2/6 val sweep @512px (+flip/zoom TTA) ===
+
+*****************************************
+Setting OMP_NUM_THREADS environment variable for each process to be 1 in default, to avoid your system being overloaded, please further tune the variable for optimal performance in your application as needed. 
+*****************************************
+[r2] rows 1500:2250 of 2998 @ 512px tag=s512
+[r1] rows 750:1500 of 2998 @ 512px tag=s512
+[r3] rows 2250:2998 of 2998 @ 512px tag=s512
+[r0] rows 0:750 of 2998 @ 512px tag=s512
+[r0] wrote val_meta.npz (2998 rows)
+Loading weights:   0%|          | 0/415 [00:00<?, ?it/s]Loading weights:   0%|          | 0/415 [00:00<?, ?it/s]Loading weights: 100%|██████████| 415/415 [00:00<00:00, 6508.19it/s]
+Loading weights: 100%|██████████| 415/415 [00:00<00:00, 6452.75it/s]
+Loading weights:   0%|          | 0/415 [00:00<?, ?it/s]Loading weights: 100%|██████████| 415/415 [00:00<00:00, 5336.40it/s]
+Loading weights:   0%|          | 0/415 [00:00<?, ?it/s][r2] loaded regional PCA basis (1024, 128)
+Loading weights: 100%|██████████| 415/415 [00:00<00:00, 4967.43it/s]
+[r1] loaded regional PCA basis (1024, 128)
+[r0] model ready: 5000 cells, step 10692, best 102.54 km
+[r0] loaded regional PCA basis (1024, 128)
+[r3] loaded regional PCA basis (1024, 128)
+[r2] DONE 750 rows in 0.3 min
+[r1] DONE 750 rows in 0.3 min
+[r0] DONE 750 rows in 0.3 min
+[r3] DONE 748 rows in 0.3 min
+[rank0]:[W723 21:44:47.718391185 ProcessGroupNCCL.cpp:1647] Warning: WARNING: destroy_process_group() was not called before program exit, which can leak resources. For more info, please see https://pytorch.org/docs/stable/distributed.html#shutdown (function operator())
+[21:44:50] === 3/6 val sweep @384px (gate logits + old-index query side) ===
+
+*****************************************
+Setting OMP_NUM_THREADS environment variable for each process to be 1 in default, to avoid your system being overloaded, please further tune the variable for optimal performance in your application as needed. 
+*****************************************
+[r3] rows 2250:2998 of 2998 @ 384px tag=s384
+[r0] rows 0:750 of 2998 @ 384px tag=s384
+[r2] rows 1500:2250 of 2998 @ 384px tag=s384
+[r1] rows 750:1500 of 2998 @ 384px tag=s384
+Loading weights:   0%|          | 0/415 [00:00<?, ?it/s]Loading weights:   0%|          | 0/415 [00:00<?, ?it/s]Loading weights:   0%|          | 0/415 [00:00<?, ?it/s]Loading weights:   0%|          | 0/415 [00:00<?, ?it/s]Loading weights: 100%|██████████| 415/415 [00:00<00:00, 6092.92it/s]
+Loading weights: 100%|██████████| 415/415 [00:00<00:00, 4557.03it/s]
+Loading weights: 100%|██████████| 415/415 [00:00<00:00, 4678.58it/s]
+Loading weights: 100%|██████████| 415/415 [00:00<00:00, 4464.15it/s]
+[r0] model ready: 5000 cells, step 10692, best 102.54 km
+[r1] DONE 750 rows in 0.1 min
+[r0] DONE 750 rows in 0.1 min
+[r3] DONE 748 rows in 0.1 min
+[r2] DONE 750 rows in 0.1 min
+[rank0]:[W723 21:45:06.254432054 ProcessGroupNCCL.cpp:1647] Warning: WARNING: destroy_process_group() was not called before program exit, which can leak resources. For more info, please see https://pytorch.org/docs/stable/distributed.html#shutdown (function operator())
+[21:45:08] === 4/6 row-order alignment check vs the old 384 index ===
+N 1198072
+sample lat/lon: [(0.38962, 32.61323), (0.38962, 32.61323), (0.38962, 32.61323), (0.38962, 32.61323), (38.79003, 141.26067), (48.43482, 13.96547), (38.9973, -115.12401), (46.67138, 7.34138)]
+[21:45:08] === 5/6 geo-smooth heads on the 512 descriptors ===
+loading…
+1198072 imgs, 299518 locs | d_pos=10.0km p_same=0.25
+baseline probe near-recall@1 (<= 10.0km): 0.0160
+ep1 step 100 loss 2.8005 (57s)
+epoch 1: probe near-recall@1 = 0.0256
+ep2 step 200 loss 2.5302 (113s)
+epoch 2: probe near-recall@1 = 0.0248
+ep3 step 300 loss 2.4309 (168s)
+ep3 step 400 loss 2.2992 (224s)
+epoch 3: probe near-recall@1 = 0.0304
+ep4 step 500 loss 2.2600 (279s)
+epoch 4: probe near-recall@1 = 0.0296
+ep5 step 600 loss 2.1533 (334s)
+ep5 step 700 loss 2.0303 (390s)
+epoch 5: probe near-recall@1 = 0.0300
+ep6 step 800 loss 1.9646 (447s)
+epoch 6: probe near-recall@1 = 0.0320
+ep7 step 900 loss 1.9977 (503s)
+ep7 step 1000 loss 1.9177 (558s)
+epoch 7: probe near-recall@1 = 0.0332
+ep8 step 1100 loss 1.8752 (614s)
+epoch 8: probe near-recall@1 = 0.0332
+ep9 step 1200 loss 1.8835 (671s)
+epoch 9: probe near-recall@1 = 0.0348
+ep10 step 1300 loss 1.8178 (727s)
+ep10 step 1400 loss 1.9064 (783s)
+epoch 10: probe near-recall@1 = 0.0340
+saved geo10_cls512.pt
+GEO HEAD DONE
+loading…
+1198072 imgs, 299518 locs | d_pos=10.0km p_same=0.25
+baseline probe near-recall@1 (<= 10.0km): 0.0112
+ep1 step 100 loss 3.4802 (56s)
+epoch 1: probe near-recall@1 = 0.0136
+ep2 step 200 loss 3.1146 (112s)
+epoch 2: probe near-recall@1 = 0.0172
+ep3 step 300 loss 2.9422 (168s)
+ep3 step 400 loss 2.8013 (224s)
+epoch 3: probe near-recall@1 = 0.0204
+ep4 step 500 loss 2.7256 (279s)
+epoch 4: probe near-recall@1 = 0.0224
+ep5 step 600 loss 2.6303 (334s)
+ep5 step 700 loss 2.4935 (390s)
+epoch 5: probe near-recall@1 = 0.0228
+ep6 step 800 loss 2.4400 (445s)
+epoch 6: probe near-recall@1 = 0.0212
+ep7 step 900 loss 2.4579 (501s)
+ep7 step 1000 loss 2.3658 (556s)
+epoch 7: probe near-recall@1 = 0.0224
+ep8 step 1100 loss 2.3210 (611s)
+epoch 8: probe near-recall@1 = 0.0236
+ep9 step 1200 loss 2.3011 (667s)
+epoch 9: probe near-recall@1 = 0.0240
+ep10 step 1300 loss 2.2008 (724s)
+ep10 step 1400 loss 2.3220 (781s)
+epoch 10: probe near-recall@1 = 0.0228
+saved geo10_mean512.pt
+GEO HEAD DONE
+[22:11:59] === 6/6 staged grid ===
+[grid] centroids taken from ckpt buffers
+gate=s384 | N=1198072 val=2998 cells=5000 (1s)
+spaces: ['cls512', 'mean512', 'old384', 'geo10_cls512', 'geo10_mean512', 'geo10_old384', 'c1_old384'] | VRAM 16.5GB (5s)
+regions (1198072, 16, 128) on CPU (7s)
+
+=== STAGE A: single spaces (mass .95, lam .05, k1 snap) ===
+    1500/2998 (17s)
+geo10_old384                                 median   52.07  mean    396  @1  9.84%  @25 40.16%  @200 73.12%  GG  4413
+geo10_cls512                                 median   52.04  mean    376  @1  9.77%  @25 39.79%  @200 73.78%  GG  4429
+c1_old384                                    median   60.77  mean    390  @1 11.47%  @25 38.73%  @200 71.58%  GG  4386
+geo10_mean512                                median   57.58  mean    419  @1  9.57%  @25 38.33%  @200 72.21%  GG  4390
+cls512                                       median   65.06  mean    421  @1 10.07%  @25 36.32%  @200 72.68%  GG  4390
+old384                                       median   65.66  mean    425  @1 10.11%  @25 35.99%  @200 72.65%  GG  4389
+mean512                                      median   80.70  mean    436  @1  8.37%  @25 32.99%  @200 69.98%  GG  4345
+best single: geo10_old384 | top3 ['geo10_old384', 'geo10_cls512', 'c1_old384']
+
+=== STAGE B: 50/50 similarity blends ===
+    1500/2998 (40s)
+geo10_cls512|geo10_mean512                   median   44.07  mean    373  @1 10.44%  @25 42.39%  @200 74.02%  GG  4439
+c1_old384|geo10_cls512                       median   45.94  mean    378  @1 11.57%  @25 41.86%  @200 73.38%  GG  4426
+geo10_mean512|geo10_old384                   median   47.36  mean    377  @1 10.61%  @25 41.53%  @200 74.25%  GG  4432
+geo10_cls512|geo10_old384                    median   46.77  mean    390  @1  9.97%  @25 41.49%  @200 73.95%  GG  4429
+c1_old384|geo10_old384                       median   49.04  mean    388  @1 11.57%  @25 41.16%  @200 73.32%  GG  4417
+c1_old384|geo10_mean512                      median   49.92  mean    395  @1 11.37%  @25 40.73%  @200 72.85%  GG  4416
+cls512|geo10_cls512                          median   51.00  mean    388  @1 10.97%  @25 40.56%  @200 73.82%  GG  4426
+geo10_old384|mean512                         median   51.64  mean    386  @1 10.04%  @25 40.43%  @200 73.38%  GG  4419
+geo10_old384|old384                          median   54.12  mean    384  @1 10.77%  @25 40.29%  @200 73.85%  GG  4426
+geo10_cls512|old384                          median   52.04  mean    388  @1 10.67%  @25 40.29%  @200 73.48%  GG  4423
+geo10_cls512|mean512                         median   51.64  mean    397  @1 10.11%  @25 40.26%  @200 73.15%  GG  4416
+cls512|geo10_old384                          median   55.41  mean    384  @1 10.61%  @25 39.79%  @200 73.45%  GG  4419
+c1_old384|cls512                             median   54.03  mean    398  @1 11.61%  @25 39.63%  @200 72.21%  GG  4407
+c1_old384|old384                             median   54.66  mean    395  @1 11.47%  @25 39.26%  @200 72.38%  GG  4405
+c1_old384|mean512                            median   59.98  mean    414  @1 10.81%  @25 37.93%  @200 71.81%  GG  4388
+best after blends: geo10_cls512|geo10_mean512
+
+=== STAGE C: gate / lambda / query-TTA on [geo10_cls512|geo10_mean512] ===
+    1500/2998 (58s)
+geo10_cls512|geo10_mean512 m0.9 l0.0         median   57.55  mean    403  @1 10.91%  @25 40.13%  @200 69.81%  GG  4369
+geo10_cls512|geo10_mean512 m0.9 l0.05        median   44.25  mean    376  @1 10.37%  @25 42.33%  @200 73.95%  GG  4437
+geo10_cls512|geo10_mean512 m0.9 l0.15        median   57.11  mean    421  @1  9.37%  @25 37.83%  @200 71.88%  GG  4387
+    1500/2998 (72s)
+geo10_cls512|geo10_mean512 m0.95 l0.0        median   57.60  mean    410  @1 11.04%  @25 40.09%  @200 69.31%  GG  4360
+geo10_cls512|geo10_mean512 m0.95 l0.05       median   44.07  mean    373  @1 10.44%  @25 42.39%  @200 74.02%  GG  4439
+geo10_cls512|geo10_mean512 m0.95 l0.15       median   57.11  mean    421  @1  9.37%  @25 37.83%  @200 71.88%  GG  4387
+    1500/2998 (92s)
+geo10_cls512|geo10_mean512 m0.99 l0.0        median   59.15  mean    414  @1 11.11%  @25 40.03%  @200 68.48%  GG  4334
+geo10_cls512|geo10_mean512 m0.99 l0.05       median   44.07  mean    373  @1 10.44%  @25 42.39%  @200 74.02%  GG  4439
+geo10_cls512|geo10_mean512 m0.99 l0.15       median   57.11  mean    421  @1  9.37%  @25 37.83%  @200 71.88%  GG  4387
+    1500/2998 (111s)
+geo10_cls512|geo10_mean512 m0.95 l0.05 tta:flip median   46.25  mean    373  @1 10.34%  @25 41.63%  @200 74.38%  GG  4441
+    1500/2998 (126s)
+geo10_cls512|geo10_mean512 m0.95 l0.05 tta:flip+zoom median   46.16  mean    368  @1 10.51%  @25 41.99%  @200 74.75%  GG  4447
+best after C: geo10_cls512|geo10_mean512
+
+=== STAGE D: regional rerank on [geo10_cls512|geo10_mean512] ===
+    1500/2998 (186s)
+geo10_cls512|geo10_mean512 rr:R200a0.5       median   43.75  mean    373  @1 11.27%  @25 42.93%  @200 73.92%  GG  4438
+geo10_cls512|geo10_mean512 rr:R50a0.5        median   43.43  mean    373  @1 11.24%  @25 42.90%  @200 73.95%  GG  4438
+geo10_cls512|geo10_mean512 rr:R200a0.25      median   45.10  mean    370  @1 10.97%  @25 42.43%  @200 74.15%  GG  4440
+geo10_cls512|geo10_mean512 rr:R50a0.25       median   45.10  mean    370  @1 10.97%  @25 42.39%  @200 74.15%  GG  4440
+geo10_cls512|geo10_mean512 rr:R200a1.0       median   49.15  mean    374  @1 11.07%  @25 41.43%  @200 72.65%  GG  4422
+geo10_cls512|geo10_mean512 rr:R50a1.0        median   49.07  mean    374  @1 11.01%  @25 41.29%  @200 72.85%  GG  4423
+best after D: geo10_cls512|geo10_mean512 rr:R200a0.5
+
+=== CHAMPION: geo10_cls512|geo10_mean512 rr:R200a0.5 (full val, n=2998) ===
+config: {'cfg': {'geo10_cls512': 0.5, 'geo10_mean512': 0.5}, 'mass': 0.95, 'lam': 0.05, 'tta': None, 'rerank': (200, 0.5)}
+median 43.75 km | mean 373.2 km
+  @   0.1 km :  2.97%
+  @   0.5 km :  7.74%
+  @     1 km : 11.27%
+  @     5 km : 24.15%
+  @    10 km : 31.72%
+  @    25 km : 42.93%
+  @    50 km : 51.83%
+  @   100 km : 61.64%
+  @   200 km : 73.92%
+  @   500 km : 88.73%
+  @   750 km : 92.49%
+  @  1000 km : 94.50%
+  @  2500 km : 97.46%
+  p10  :       0.8 km
+  p25  :       5.4 km
+  p50  :      43.8 km
+  p75  :     211.4 km
+  p90  :     564.3 km
+  p95  :    1079.4 km
+  p99  :    7985.5 km
+GeoGuessr: mean/round 4438 | median round 4856 | 5-round 22188 | >=4500 69.3% | >=4900 44.9%
+(best-by-median config: geo10_cls512|geo10_mean512 rr:R50a0.5 -> 43.43 km, @25 42.90%)
+GRID DONE (3.7 min)
+[22:15:42] C2 PIPELINE DONE

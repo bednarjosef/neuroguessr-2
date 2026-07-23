@@ -378,6 +378,48 @@ _(anything about the box, dataset, VRAM ceilings, throughput, DINOv3 quirks, etc
 
 ## Session history
 
+### 2026-07-24 (night 4) — C2 512px re-index: 49.0 -> 43.75 median, @25 41.2 -> 42.9%
+
+- **Champion: geo10_cls512 (+) geo10_mean512 blend + regional chamfer rerank (R200, a0.5),
+  gate m0.95 lam0.05, k1 snap. Full val: median 43.75 | mean 373.2 | @1 11.27% | @25 42.93% |
+  @200 73.92% | GeoGuessr 4438/round (22188 per 5-round game, 69.3% of rounds >=4500).**
+- **Per-lever attribution (Stage A measures every space ALONE, before blending):**
+  512px vs 384px: **+0.33 pts** (35.99 -> 36.32) — resolution is NOT the lever, the single
+  most surprising result of the program. mean-patch alone 32.99 (worst descriptor solo);
+  cls alone 36.32; geo10_cls512 39.79; geo10_mean512 38.33; **blend of the two heads 42.39
+  (+2.6 over the best single)**; + regional rerank 42.93.
+- **DEAD ENDS (measured, do not retry): query TTA** (flip/zoom, -0.4 @25, helps mean/@200 only);
+  **multi-resolution 512(+)384 ensemble** (-0.9 vs pure-512 blend — same model, correlated);
+  **gate-mass sweep** (0.90/0.95/0.99 identical; lam 0.05 optimal, 0.0 and 0.15 both worse).
+- Regional descriptors: 4x4 block-mean of patch tokens, PCA-whitened to 128d (4.9 GB for 1.2M),
+  chamfer (max over query regions, mean over candidate regions) rerank of top-R. +0.5 pts.
+- Row order is nshards-independent (contiguous IterableDataset.shard): a 32-worker download
+  reproduced the 16-worker run-#2 order exactly, verified sample-for-sample. Old indices stay
+  reusable across boxes.
+- **The read: two rounds of head engineering (41.2 -> 42.9) are hitting diminishing returns
+  while the in-pool oracle sits at 92-98%. The ceiling is in the FEATURES, not the pooling.**
+
+### 2026-07-24 (night 4) — LESSONS (process, not results)
+
+1. **Instrument every training loop with the metric the final decision uses.** The C3 fine-tune
+   ran blind: its loss swings 1.6-2.9 purely on region difficulty, so it predicts nothing, and
+   the 5 intermediate checkpoints can't be ranked without a full re-index each. train_geo_head's
+   probe (near-recall@1 <=10km, own location excluded) costs ~2 s and would have given both a
+   forecast and checkpoint selection. Add it to any future fine-tune BEFORE launching.
+2. **Blend diversity is a resource to be protected.** +2.6 pts came from CLS and mean-patch
+   making *different* mistakes. Fine-tuning one descriptor risks correlating them. A previous
+   model's descriptors are decorrelated by construction and (see row-order note) still aligned
+   -> always keep them as candidate blend partners in the grid, even when they lost as a
+   same-model partner.
+3. **Measure every component alone before combining** (Stage A). It is the only reason
+   "mean-patch is the worst solo descriptor AND essential to the champion" is a known fact
+   rather than a guess.
+4. **Decouple what you change from what you rely on.** C3 changes the encoder but the retrieval
+   gate keeps using the OLD checkpoint's logits, so a worse encoder cannot poison the gate.
+5. **Hard negatives matter for geo-contrastive training**: globally random anchors gave in-batch
+   acc 0.81 by step 25 (trivial task); drawing all anchors of a batch from one ~500 km region
+   dropped it to 0.49 at the same step, with <50 km pairs still masked out of the loss.
+
 ### 2026-07-23 (night 3) — C1.5 GEO-SMOOTH heads (~$0.35): median 61.2 -> 49.0, @25 38.7 -> 41.2%
 - **Diagnosis that unlocked it: C1's same-place objective was subtly WRONG for eval** — val
   locations are never in the index, so the best reachable match is a different location
