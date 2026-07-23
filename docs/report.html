@@ -1,0 +1,231 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>neuroguessr-2 — technical report</title>
+<style>
+  @page { size: A4; margin: 16mm 15mm; }
+  * { box-sizing: border-box; }
+  body { font: 10.5pt/1.45 "Charter", "Georgia", serif; color: #16181d; margin: 0; }
+  h1 { font-size: 20pt; margin: 0 0 2pt; letter-spacing: -.4pt; }
+  h2 { font-size: 12.5pt; margin: 16pt 0 5pt; padding-bottom: 3pt;
+       border-bottom: 1.5px solid #16181d; letter-spacing: -.2pt; }
+  h3 { font-size: 10.5pt; margin: 11pt 0 3pt; }
+  p { margin: 0 0 6pt; }
+  .sub { color: #5b626e; font-size: 9.5pt; margin-bottom: 12pt; }
+  table { border-collapse: collapse; width: 100%; margin: 6pt 0 9pt; font-size: 9pt; }
+  th { text-align: left; border-bottom: 1px solid #16181d; padding: 3pt 5pt; font-weight: 600; }
+  td { padding: 2.5pt 5pt; border-bottom: 0.5px solid #d6d9de; }
+  td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  tr.hi td { background: #eef3ff; font-weight: 600; }
+  code, .mono { font-family: "DejaVu Sans Mono", monospace; font-size: 8.5pt; }
+  .box { border: 1px solid #c9ced6; border-radius: 4px; padding: 7pt 9pt; margin: 7pt 0;
+         background: #fafbfc; }
+  .flow { font-family: "DejaVu Sans Mono", monospace; font-size: 8pt; line-height: 1.5;
+          white-space: pre; }
+  .two { display: flex; gap: 12pt; }
+  .two > div { flex: 1; }
+  .key { background: #fff8e1; padding: 1pt 3pt; border-radius: 2px; }
+  ul { margin: 3pt 0 7pt; padding-left: 15pt; }
+  li { margin-bottom: 2.5pt; }
+  .foot { color: #5b626e; font-size: 8.5pt; }
+  .pagebreak { page-break-before: always; }
+</style></head><body>
+
+<h1>neuroguessr-2: image geolocation</h1>
+<div class="sub">Technical report · 24 July 2026 · single static image, no panorama, no metadata ·
+all numbers on the frozen 2 998-image validation set</div>
+
+<div class="box">
+<b>Where we are.</b> A DINOv3 ViT-L/16 classifier over 5 000 learned geocells, followed by a
+retrieval stage that snaps the answer onto the nearest visually-matching image among 1.2 M
+geo-tagged exemplars. Median error <b>43.75 km</b>, <b>42.9 %</b> of images within 25 km,
+<b>11.3 %</b> within 1 km, GeoGuessr equivalent <b>4 438 / 5 000</b> per round. For reference,
+PIGEON (Stanford, 2023) reports 131 km median and 24.2 % @25 km on single images.
+</div>
+
+<h2>1 · Task and evaluation</h2>
+<p>One 384×384 image in, one latitude/longitude out. Scoring is by great-circle (haversine)
+distance to the truth. The evaluator is <b>frozen</b>: the same 2 998 held-out images, the same
+metric code, never touched during research — so a score can be improved only by making the model
+better, never by making the test easier. Reported metrics:</p>
+<ul>
+  <li><b>median km</b> — the primary objective (robust to the hopeless tail)</li>
+  <li><b>acc@R</b> — share of images within R km, the fine-grained quality signal</li>
+  <li><b>mean km</b> — dominated by the ~2.5 % of images sent to the wrong continent; it is
+      effectively a <i>country-accuracy</i> metric, not a fine-grained one</li>
+  <li><b>GeoGuessr score</b> — 5 000·e<sup>−d/1492.7</sup>, the game's world-map formula</li>
+</ul>
+
+<h2>2 · Architecture</h2>
+
+<h3>2.1 Stage one — the classifier (what it is)</h3>
+<table>
+<tr><th>component</th><th>detail</th><th class="n">params</th></tr>
+<tr><td>Backbone</td><td>DINOv3 ViT-L/16 (<code>facebook/dinov3-vitl16-pretrain-lvd1689m</code>),
+    384 px → 576 patch tokens + 5 prefix tokens, RoPE positions</td><td class="n">~300 M frozen</td></tr>
+<tr><td>Adaptation</td><td>LoRA rank 16 on every attention <code>q,k,v,o</code> projection</td>
+    <td class="n">3.15 M</td></tr>
+<tr><td>Trunk</td><td>LayerNorm → Linear(1024→1024) → GELU on the CLS token</td><td class="n">1.05 M</td></tr>
+<tr><td>Fine head A</td><td>5 000 geocells (k-means on training coordinates, country-constrained)</td>
+    <td class="n">5.0 M</td></tr>
+<tr><td>Fine head B</td><td>a second, <i>staggered</i> 5 000-cell tessellation (different seed) —
+    two independent quantisations of the same globe, unioned at readout</td><td class="n">5.0 M</td></tr>
+<tr><td>Hierarchy</td><td>coarse heads at 64 and 512 cells, added to the fine logits through a
+    child→parent map</td><td class="n">0.6 M</td></tr>
+<tr><td>Country head</td><td>log-softmax over countries, added via each cell's country</td>
+    <td class="n">0.3 M</td></tr>
+<tr><td colspan="2"><b>Total trainable</b> (0.6 % of the backbone left frozen)</td>
+    <td class="n"><b>15.2 M</b></td></tr>
+</table>
+
+<p>Training: 3 epochs over 1 198 072 images (299 518 locations × 4 headings) on 4×RTX 5090,
+cross-entropy on distance-smoothed cell targets (softmax(−d/τ), τ = 75 km) plus an auxiliary
+<b>mean-spherical-loss</b> term that back-propagates through the differentiable spherical mean
+of the predicted distribution with a Geman–McClure robust penalty in kilometres.</p>
+
+<h3>2.2 Stage two — retrieval (where the accuracy actually comes from)</h3>
+<p>The classifier can never beat its own cell size: with 5 000 cells the quantisation floor is
+~34 km median, and the argmax readout can do no better. Retrieval removes that floor entirely by
+returning the coordinates of a <i>real training image</i> rather than a cell centre.</p>
+
+<div class="box flow">
+  query image
+      │
+      ├─► encoder ──► descriptor  (1024-d, L2-normalised)
+      │
+      └─► classifier ──► posterior over 5 000 cells
+                              │
+                              ▼
+              ① GATE: smallest set of cells holding 95 % of the
+                 posterior mass (median ~42 cells, capped at 400)
+                              │  ≈ 22 000 candidate images
+                              ▼
+              ② MATCH: cosine similarity in a learned "place" space
+                 score = 0.5·sim(head_A) + 0.5·sim(head_B) + 0.05·log p(cell)
+                              │
+                              ▼
+              ③ RERANK: top-200 re-scored by regional chamfer similarity
+                 (4×4 grid of patch-block descriptors, PCA-whitened to 128-d)
+                              │
+                              ▼
+              ④ SNAP: take the single best match, output ITS coordinates
+</div>
+
+<p>The index holds 1 198 072 descriptors (2.4 GB fp16 per space) plus 1.2 M × 16 × 128 regional
+descriptors (4.9 GB). One guess costs ~1.2 s on a laptop CPU.</p>
+
+<h3>2.3 The place heads — the decisive idea</h3>
+<p>Raw DINOv3 similarity answers <i>"do these two photos look alike"</i>, which is the wrong
+question: two photos of the same 30 m of forest road taken 180° apart look nothing alike, while a
+Finnish road and a Canadian road look identical. Each head is a small residual MLP
+(1024→2048→1024, output layer zero-initialised so it starts as the identity) trained contrastively
+on <i>cached</i> descriptors — minutes of GPU time, no images touched.</p>
+<p class="key"><b>The correction that mattered:</b> the first head used same-location positives.
+But at test time the query's own location is never in the index — the best reachable answer is a
+<i>different</i> location 1–15 km away, and same-location training actively pushes those neighbours
+apart. Retraining with positives drawn from any location within 10 km, and masking in-batch
+negatives closer than 50 km as false negatives, moved the median from 61.2 → 49.0 km.</p>
+
+<h2>3 · What changed the numbers</h2>
+<table>
+<tr><th>step</th><th>what it was</th><th class="n">median</th><th class="n">@1 km</th>
+    <th class="n">@25 km</th><th class="n">mean</th></tr>
+<tr><td>ratchet baseline</td><td>8-min experiments, 60 k-image subset</td><td class="n">433</td>
+    <td class="n">—</td><td class="n">—</td><td class="n">—</td></tr>
+<tr><td>ratchet champion</td><td>~60 accepted/rejected experiments: geocells, hierarchy,
+    country head, robust km loss, staggered tessellation</td><td class="n">205</td>
+    <td class="n">—</td><td class="n">—</td><td class="n">—</td></tr>
+<tr><td>full run #1</td><td>same stack, all 1.2 M images, 3 epochs, 4 GPUs</td>
+    <td class="n">104.7</td><td class="n">0.0 %</td><td class="n">7.6 %</td><td class="n">456</td></tr>
+<tr><td>full run #2</td><td>every banked win stacked at scale — <i>a wash</i>, establishing the
+    3-epoch regime ceiling</td><td class="n">104.4</td><td class="n">0.0 %</td>
+    <td class="n">7.8 %</td><td class="n">479</td></tr>
+<tr><td>retrieval v1</td><td>mass gate + cosine kNN + snap, on frozen features</td>
+    <td class="n">78.5</td><td class="n">10.2 %</td><td class="n">35.2 %</td><td class="n">—</td></tr>
+<tr><td>phase A</td><td>tuned gate (0.95), soft classifier prior (λ = 0.05), k = 1 snap</td>
+    <td class="n">65.7</td><td class="n">10.1 %</td><td class="n">36.0 %</td><td class="n">—</td></tr>
+<tr><td>C1 place head</td><td>contrastive head on cached descriptors</td><td class="n">61.2</td>
+    <td class="n">11.5 %</td><td class="n">38.7 %</td><td class="n">390</td></tr>
+<tr><td>C1.5 geo-smooth</td><td>positives within 10 km + near-negative masking; blend of two heads</td>
+    <td class="n">49.0</td><td class="n">11.6 %</td><td class="n">41.2 %</td><td class="n">388</td></tr>
+<tr class="hi"><td>C2 (current)</td><td>CLS ⊕ mean-patch descriptor blend + regional chamfer rerank</td>
+    <td class="n">43.8</td><td class="n">11.3 %</td><td class="n">42.9 %</td><td class="n">373</td></tr>
+</table>
+<p class="foot">Everything from “retrieval v1” down is <b>inference-time only</b> — the classifier
+has not been retrained since run #2. Total compute cost of the entire retrieval program: ~$6.</p>
+
+<h2>4 · Measured negatives (do not retry)</h2>
+<table>
+<tr><th>tried</th><th>result</th></tr>
+<tr><td><b>512 px instead of 384 px</b> (1.8× the compute)</td><td>+0.33 pts @25 km — resolution is
+    <i>not</i> the lever, the most surprising result of the program</td></tr>
+<tr><td>query-side test-time augmentation (flip, zoom)</td><td>−0.4 pts @25 km</td></tr>
+<tr><td>multi-resolution ensemble (512 ⊕ 384, same model)</td><td>−0.9 pts — same model, correlated
+    errors, no diversity to exploit</td></tr>
+<tr><td>gate-mass sweep (0.90 / 0.95 / 0.99)</td><td>identical to 3 decimal places</td></tr>
+<tr><td>consensus voting over top-k neighbours; location max-pooling; α-query-expansion</td>
+    <td>neutral to −0.5 pts — “trust the single nearest match” wins</td></tr>
+<tr><td>post-trunk features instead of backbone CLS</td><td>worse everywhere — geo-classification
+    training strips instance detail from the trunk</td></tr>
+</table>
+
+<h2>5 · Where the remaining error lives</h2>
+<p>Three ceilings, all measured on the same val set:</p>
+<ul>
+  <li><b>Coverage: 100 %.</b> For every single validation image there exists a training image
+      within 25 km (median nearest 2.2 km). Data is not the constraint.</li>
+  <li><b>In-pool oracle: 92–98 %.</b> Even restricted to the candidates the gate actually shows,
+      a perfect matcher would score 92–98 % @25 km.</li>
+  <li><b>We convert that into 42.9 %.</b></li>
+</ul>
+<p>So ~50 points of @25 km sit purely in <b>matching quality</b> — not in coverage, not in the
+gate, not in the cell scheme. Two rounds of head engineering moved it 38.7 → 42.9 with sharply
+diminishing returns, which is the evidence that the limit is in the <i>features themselves</i>:
+a backbone tuned to classify continents keeps what distinguishes Finland from Canada and discards
+what distinguishes one Finnish road from the next.</p>
+
+<h2>6 · Current distance profile</h2>
+<div class="two"><div>
+<table>
+<tr><th>within</th><th class="n">share</th></tr>
+<tr><td>100 m</td><td class="n">2.97 %</td></tr>
+<tr><td>500 m</td><td class="n">7.74 %</td></tr>
+<tr><td>1 km</td><td class="n">11.27 %</td></tr>
+<tr><td>5 km</td><td class="n">24.15 %</td></tr>
+<tr><td>10 km</td><td class="n">31.72 %</td></tr>
+<tr><td>25 km</td><td class="n">42.93 %</td></tr>
+<tr><td>50 km</td><td class="n">51.83 %</td></tr>
+<tr><td>200 km</td><td class="n">73.92 %</td></tr>
+<tr><td>1 000 km</td><td class="n">94.50 %</td></tr>
+</table>
+</div><div>
+<table>
+<tr><th>percentile</th><th class="n">error</th></tr>
+<tr><td>p10</td><td class="n">0.8 km</td></tr>
+<tr><td>p25</td><td class="n">5.4 km</td></tr>
+<tr><td>p50</td><td class="n">43.8 km</td></tr>
+<tr><td>p75</td><td class="n">211 km</td></tr>
+<tr><td>p90</td><td class="n">564 km</td></tr>
+<tr><td>p99</td><td class="n">7 986 km</td></tr>
+</table>
+<table>
+<tr><th>GeoGuessr</th><th class="n">score</th></tr>
+<tr><td>mean per round</td><td class="n">4 438</td></tr>
+<tr><td>median round</td><td class="n">4 856</td></tr>
+<tr><td>5-round game</td><td class="n">22 188</td></tr>
+<tr><td>rounds ≥ 4 500</td><td class="n">69.3 %</td></tr>
+</table>
+</div></div>
+
+<h2>7 · In flight</h2>
+<p><b>C3 — contrastive fine-tune of the encoder itself.</b> Every head so far could only
+re-weight information the frozen backbone already kept. C3 trains the backbone (LoRA) so that
+cosine similarity <i>is</i> geographic proximity: positives within 10 km, negatives drawn from the
+same ~500 km region so they are visually similar but geographically wrong, near-pairs masked out
+of the loss, embeddings gathered across all four GPUs for a large negative pool. The classifier is
+deliberately untouched — the retrieval gate keeps using the old checkpoint's logits, so a worse
+encoder cannot poison the gate. Expected @25 km: 46–49 %.</p>
+
+<p class="foot">Source: <code>train_full.py</code> (classifier), <code>retrieval/</code>
+(embed_c2, train_geo_head, train_c3_contrastive, eval_c2_gpu, engine), full experiment ledger in
+<code>RESEARCH_LOG.md</code>.</p>
+
+</body></html>
