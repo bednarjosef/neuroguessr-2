@@ -152,13 +152,13 @@ def main():
         hi = min(hi, lo + a.limit)
     print(f"[r{RANK}] rows {lo}:{hi} of {n} @ {a.img_size}px tag={tag}", flush=True)
 
-    if RANK == 0:                      # ground-truth tables straight from the parquet order
-        for sp, fn in (("train", "train_latlon.npz"), ("val", "val_meta.npz")):
-            p = os.path.join(a.out, fn)
-            if not os.path.exists(p):
-                _, d2 = load_index(sp)
-                np.savez(p, lat=d2["lat"].to_numpy(np.float64), lon=d2["lon"].to_numpy(np.float64))
-                print(f"[r0] wrote {fn} ({len(d2)} rows)", flush=True)
+    if RANK == 0:                      # ground truth for THIS split, straight from parquet order
+        fn = "train_latlon.npz" if a.split == "train" else "val_meta.npz"
+        pth = os.path.join(a.out, fn)
+        if not os.path.exists(pth):
+            np.savez(pth, lat=df["latitude"].to_numpy(np.float64),
+                     lon=df["longitude"].to_numpy(np.float64))
+            print(f"[r0] wrote {fn} ({len(df)} rows)", flush=True)
 
     ck = torch.load(a.ckpt, map_location="cpu", weights_only=False)
     model = GeoModelEval(ck)

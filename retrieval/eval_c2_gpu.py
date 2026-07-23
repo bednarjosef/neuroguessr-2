@@ -157,17 +157,20 @@ def main():
         reg_va = torch.from_numpy(cat(d, "c2_reg_val_s512_r")).float().to(device)
         print(f"regions {tuple(reg_all.shape)} on CPU ({time.time()-T0:.0f}s)", flush=True)
 
-    def run(cfgs, mass=0.95, lam=0.05, tta=None, rerank=None):
-        """cfgs: [(tag, {space: weight})]. Returns {tag: per-image distance array}."""
-        need = sorted({s for _, w in cfgs for s in w})
+    def run(cfgs, mass=0.95, tta=None, rerank=None):
+        """cfgs: [(tag, {space: weight}, lam)] — all share one gate pass over the queries.
+        rerank: (max_R, [(R, alpha), ...]) — chamfer computed once for max_R per config."""
+        need = sorted({s for _, w, _ in cfgs for s in w})
         m_of = (csum < mass).sum(1) + 1
-        preds = {t: np.zeros((n, 2)) for t, _ in cfgs}
+        tags = [t for t, _, _ in cfgs] if not rerank else \
+            [f"{t} rr:R{R}a{al}" for t, _, _ in cfgs for R, al in rerank[1]]
+        preds = {t: np.zeros((n, 2)) for t in tags}
         with torch.no_grad():
             for i in range(n):
                 m = min(int(m_of[i]), a.cap)
                 cells = rank_order[i, :m]
                 ids = torch.cat([order[starts[c]:ends[c]] for c in cells])
-                prior = lam * logp[i, cell_a[ids]].double()
+                lp = logp[i, cell_a[ids]].double()
                 sims = {}
                 for nm in need:
                     tr, va = spaces[nm]
@@ -176,19 +179,21 @@ def main():
                         q = F.normalize(sum([va[i]] + [valvars[nm][k][i] for k in tta
                                                        if k in valvars[nm]]), dim=-1)
                     sims[nm] = tr[ids].float() @ q
-                for tag, w in cfgs:
-                    s = sum(wt * sims[nm] for nm, wt in w.items()).double() + prior
-                    if rerank is not None:
-                        R, alpha = rerank
-                        top = s.topk(min(R, s.numel())).indices
-                        rt = reg_all[ids[top].cpu()].float().to(device)
-                        ch = (rt @ reg_va[i].T).max(2).values.mean(1)   # chamfer over 16 regions
-                        s = s[top] + alpha * ch.double()
-                        j = ids[top[int(s.argmax())]]
-                    else:
-                        j = ids[int(s.argmax())]
-                    jj = int(j)
-                    preds[tag][i] = (float(trlat_t[jj]), float(trlon_t[jj]))
+                for tag, w, lam in cfgs:
+                    s = sum(wt * sims[nm] for nm, wt in w.items()).double() + lam * lp
+                    if rerank is None:
+                        jj = int(ids[int(s.argmax())])
+                        preds[tag][i] = (float(trlat_t[jj]), float(trlon_t[jj]))
+                        continue
+                    maxR, combos = rerank
+                    top = s.topk(min(maxR, s.numel())).indices
+                    rt = reg_all[ids[top].cpu()].float().to(device)
+                    ch = (rt @ reg_va[i].T).max(2).values.mean(1)     # chamfer over 16 regions
+                    for R, al in combos:
+                        k = min(R, top.numel())
+                        sc = s[top[:k]] + al * ch[:k].double()
+                        jj = int(ids[top[:k][int(sc.argmax())]])
+                        preds[f"{tag} rr:R{R}a{al}"][i] = (float(trlat_t[jj]), float(trlon_t[jj]))
                 if i and i % 1500 == 0:
                     print(f"    {i}/{n} ({time.time()-T0:.0f}s)", flush=True)
         return {t: hav(v[:, 0], v[:, 1], tlat, tlon) for t, v in preds.items()}
@@ -206,10 +211,10 @@ def main():
     top = []
     if "A" in a.stages:
         print("\n=== STAGE A: single spaces (mass .95, lam .05, k1 snap) ===", flush=True)
-        cfgs = [(nm, {nm: 1.0}) for nm in spaces]
+        cfgs = [(nm, {nm: 1.0}, 0.05) for nm in spaces]
         res = run(cfgs)
         for t in sorted(res, key=lambda t: -(res[t] <= 25).mean()):
-            record(t, res[t], cfgs[[c[0] for c in cfgs].index(t)][1], 0.95, 0.05, None, None)
+            record(t, res[t], {t: 1.0}, 0.95, 0.05, None, None)
         top = sorted(res, key=lambda t: -(res[t] <= 25).mean())[:3]
         print(f"best single: {best_tag()} | top3 {top}", flush=True)
 
@@ -222,7 +227,7 @@ def main():
                 if x != y and k not in seen:
                     seen.add(k)
                     pairs.append(k)
-        cfgs = [(f"{x}|{y}", {x: 0.5, y: 0.5}) for x, y in pairs]
+        cfgs = [(f"{x}|{y}", {x: 0.5, y: 0.5}, 0.05) for x, y in pairs]
         res = run(cfgs)
         for t in sorted(res, key=lambda t: -(res[t] <= 25).mean()):
             record(t, res[t], dict(zip(t.split("|"), [0.5, 0.5])), 0.95, 0.05, None, None)
@@ -233,29 +238,27 @@ def main():
         cfg = META[b]["cfg"]
         print(f"\n=== STAGE C: gate / lambda / query-TTA on [{b}] ===", flush=True)
         for mass in (0.90, 0.95, 0.99):
-            for lam in (0.0, 0.05, 0.15):
-                if (mass, lam) == (0.95, 0.05):
-                    continue
-                tag = f"{b} m{mass} l{lam}"
-                record(tag, run([(tag, cfg)], mass=mass, lam=lam)[tag], cfg, mass, lam, None, None)
+            cfgs = [(f"{b} m{mass} l{lam}", cfg, lam) for lam in (0.0, 0.05, 0.15)]
+            res = run(cfgs, mass=mass)
+            for tag, _, lam in cfgs:
+                record(tag, res[tag], cfg, mass, lam, None, None)
         b2 = best_tag()
         mass, lam = META[b2]["mass"], META[b2]["lam"]
         for tta in (["flip"], ["flip", "zoom"]):
             tag = f"{b} m{mass} l{lam} tta:{'+'.join(tta)}"
-            record(tag, run([(tag, cfg)], mass=mass, lam=lam, tta=tta)[tag],
-                   cfg, mass, lam, tta, None)
+            record(tag, run([(tag, cfg, lam)], mass=mass, tta=tta)[tag], cfg, mass, lam, tta, None)
         print(f"best after C: {best_tag()}", flush=True)
 
     if "D" in a.stages and reg_all is not None:
         b = best_tag()
         M = META[b]
         print(f"\n=== STAGE D: regional rerank on [{b}] ===", flush=True)
-        for R in (50, 200):
-            for alpha in (0.25, 0.5, 1.0):
-                tag = f"{b} rr:R{R}a{alpha}"
-                record(tag, run([(tag, M["cfg"])], mass=M["mass"], lam=M["lam"],
-                                tta=M["tta"], rerank=(R, alpha))[tag],
-                       M["cfg"], M["mass"], M["lam"], M["tta"], (R, alpha))
+        combos = [(R, al) for R in (50, 200) for al in (0.25, 0.5, 1.0)]
+        res = run([(b, M["cfg"], M["lam"])], mass=M["mass"], tta=M["tta"],
+                  rerank=(200, combos))
+        for tag in sorted(res, key=lambda t: -(res[t] <= 25).mean()):
+            R, al = tag.rsplit("rr:R", 1)[1].split("a")
+            record(tag, res[tag], M["cfg"], M["mass"], M["lam"], M["tta"], (int(R), float(al)))
         print(f"best after D: {best_tag()}", flush=True)
 
     if "F" in a.stages:
