@@ -1,0 +1,192 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>neuroguessr-2 architecture</title>
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  body { width: 1700px; height: 1150px; padding: 22px 26px; background: #0f1219;
+         color: #e8ebf0; font: 13px/1.35 "DejaVu Sans", system-ui, sans-serif; }
+  h1 { font-size: 22px; letter-spacing: -.3px; }
+  h1 span { color: #6b7686; font-weight: 400; font-size: 14px; }
+  .legend { display: flex; gap: 16px; margin: 9px 0 14px; font-size: 12px; align-items: center; }
+  .chip { display: flex; align-items: center; gap: 6px; }
+  .sw { width: 13px; height: 13px; border-radius: 3px; }
+  .grid { display: flex; gap: 16px; height: 985px; }
+  .col { display: flex; flex-direction: column; gap: 9px; }
+  .box { border-radius: 7px; padding: 8px 11px; border: 1px solid; }
+  .t { font-weight: 700; font-size: 13.5px; }
+  .d { font-size: 11.5px; color: #aab3c0; margin-top: 2px; line-height: 1.3; }
+  .p { font-size: 11.5px; font-weight: 700; float: right; }
+  /* colour = who trained it */
+  .frozen { background: #1a1f29; border-color: #333c4a; }
+  .frozen .p { color: #8b96a5; }
+  .run2   { background: #12233b; border-color: #2f5f9e; }
+  .run2 .p { color: #7db3ff; }
+  .head   { background: #0f2a22; border-color: #2f8f6d; }
+  .head .p { color: #59d3a6; }
+  .c3     { background: #2e1f0e; border-color: #a4741f; }
+  .c3 .p { color: #f5b942; }
+  .data   { background: #241726; border-color: #7d4a86; }
+  .data .p { color: #d59ae0; }
+  .arrow { text-align: center; color: #5c6675; font-size: 15px; line-height: 1; }
+  .hdr { font-size: 11px; letter-spacing: 1.4px; color: #6b7686; font-weight: 700;
+         text-transform: uppercase; margin-bottom: 2px; }
+  .note { font-size: 11px; color: #8b96a5; font-style: italic; }
+  table { border-collapse: collapse; width: 100%; font-size: 11.5px; margin-top: 4px; }
+  td { padding: 2.5px 4px; border-bottom: 1px solid #232a35; }
+  td.n { text-align: right; font-variant-numeric: tabular-nums; }
+  .win { color: #59d3a6; font-weight: 700; }
+  .big { font-size: 26px; font-weight: 700; }
+  .kpi { background: #0f2a22; border: 1px solid #2f8f6d; border-radius: 7px; padding: 9px 11px; }
+</style></head><body>
+
+<h1>neuroguessr-2 — how a guess is made <span>· one static image in, one lat/lon out · 24 Jul 2026</span></h1>
+<div class="legend">
+  <div class="chip"><div class="sw" style="background:#333c4a"></div>frozen pretrained (never trained)</div>
+  <div class="chip"><div class="sw" style="background:#2f5f9e"></div>trained by the <b>full run</b> (classification, 3 epochs, 1.2 M imgs)</div>
+  <div class="chip"><div class="sw" style="background:#2f8f6d"></div>trained as a <b>place head</b> (contrastive, on cached vectors, minutes)</div>
+  <div class="chip"><div class="sw" style="background:#a4741f"></div>trained by <b>C3</b> (contrastive, on images, 42 min)</div>
+  <div class="chip"><div class="sw" style="background:#7d4a86"></div>data / index (not learned)</div>
+</div>
+
+<div class="grid">
+
+  <!-- COLUMN 1 : shared encoder -->
+  <div class="col" style="width:330px">
+    <div class="hdr">1 · shared encoder — one forward pass</div>
+    <div class="box data"><span class="p">384×384</span><div class="t">input image</div>
+      <div class="d">centre-cropped, no metadata, no panorama</div></div>
+    <div class="arrow">▼</div>
+    <div class="box frozen"><span class="p">~300 M</span><div class="t">DINOv3 ViT-L/16</div>
+      <div class="d">24 blocks · 576 patch tokens + 5 prefix · RoPE positions.<br>
+      Pretrained by Meta on 1.7 B images. <b>Weights never modified.</b></div></div>
+    <div class="arrow">▲ low-rank correction added inside every attention block</div>
+    <div class="box c3"><span class="p">3.15 M</span><div class="t">LoRA adapters &nbsp;r = 16</div>
+      <div class="d">on q, k, v, o of all 24 blocks (2·16·1024 params each × 96 matrices).<br>
+      <b>Trained twice:</b> first by the full run (classify into cells), now re-trained by C3
+      (make similarity = geographic proximity).</div></div>
+    <div class="arrow">▼</div>
+    <div class="box frozen" style="border-color:#4a5666"><span class="p">1024-d</span>
+      <div class="t">CLS token</div>
+      <div class="d">the single vector everything downstream reads</div></div>
+    <div class="arrow">├────────────┬────────────┤</div>
+    <div class="note">The same vector feeds both branches. The left branch decides
+      <b>where to look</b>; the right branch decides <b>which exact photo it is</b>.</div>
+    <div class="kpi" style="margin-top:6px">
+      <div style="color:#8b96a5;font-size:11px;letter-spacing:1px">CURRENT RESULT · FULL VAL</div>
+      <div class="big">43.8 km <span style="font-size:13px;color:#8b96a5">median</span></div>
+      <table>
+        <tr><td>within 1 km</td><td class="n win">11.3 %</td></tr>
+        <tr><td>within 25 km</td><td class="n win">42.9 %</td></tr>
+        <tr><td>within 200 km</td><td class="n">73.9 %</td></tr>
+        <tr><td>GeoGuessr / round</td><td class="n">4 438</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- COLUMN 2 : classifier branch -->
+  <div class="col" style="width:330px">
+    <div class="hdr">2 · classifier branch → <i>where to look</i></div>
+    <div class="box run2"><span class="p">1.05 M</span><div class="t">trunk</div>
+      <div class="d">LayerNorm → Linear(1024→1024) → GELU</div></div>
+    <div class="arrow">▼</div>
+    <div class="box run2"><span class="p">5.0 M</span><div class="t">fine head A — 5 000 geocells</div>
+      <div class="d">k-means over training coordinates, country-constrained</div></div>
+    <div class="box run2"><span class="p">5.0 M</span><div class="t">fine head B — staggered 5 000</div>
+      <div class="d">second tessellation, different seed; unioned at readout so cell borders
+      don't line up</div></div>
+    <div class="box run2"><span class="p">0.9 M</span><div class="t">coarse 64 + 512 &nbsp;·&nbsp; country head</div>
+      <div class="d">added into the fine logits through child→parent maps — fixes
+      wrong-continent errors</div></div>
+    <div class="arrow">▼</div>
+    <div class="box frozen" style="border-color:#4a5666"><span class="p">5 000</span>
+      <div class="t">posterior over cells</div>
+      <div class="d">p(cell | image)</div></div>
+    <div class="arrow">▼</div>
+    <div class="box data"><span class="p">≈22 k imgs</span><div class="t">① GATE</div>
+      <div class="d">smallest set of cells holding <b>95 %</b> of the posterior mass
+      (median ~42 cells, hard cap 400) → the candidate pool the matcher may search</div></div>
+    <div class="note">Alone, this branch bottoms out at <b>~104 km</b> median — a cell is ~34 km
+      across, and its centre is the best answer it can ever give.</div>
+    <div class="box frozen" style="margin-top:auto"><div class="t" style="font-size:12.5px">
+      why the gate is loose</div>
+      <div class="d">A tight gate (top-5 cells) throws away the answer 40 % of the time.
+      At 95 % mass the right cell is inside <b>92–98 %</b> of the time — so the whole
+      remaining error is <i>matching</i>, not <i>looking in the wrong place</i>.</div></div>
+  </div>
+
+  <!-- COLUMN 3 : retrieval branch -->
+  <div class="col" style="width:355px">
+    <div class="hdr">3 · retrieval branch → <i>which exact photo</i></div>
+    <div class="box c3"><span class="p">4.2 M</span><div class="t">place head A (on CLS)</div>
+      <div class="d">residual MLP 1024→2048→1024, zero-init output (starts as identity).<br>
+      Trained so cosine similarity <b>decays with distance</b>: positives = any image within
+      10 km, negatives closer than 50 km masked as false.</div></div>
+    <div class="box head"><span class="p">4.2 M</span><div class="t">place head B (on mean-patch)</div>
+      <div class="d">same recipe on the averaged patch tokens. Worst descriptor alone
+      (33 %), but it makes <b>different mistakes</b> → +2.6 pts in the blend.</div></div>
+    <div class="arrow">▼</div>
+    <div class="box data"><span class="p">2.4 GB</span><div class="t">② INDEX — 1 198 072 vectors</div>
+      <div class="d">every training image pre-encoded (299 518 locations × 4 headings),
+      1024-d fp16, bucketed by cell</div></div>
+    <div class="arrow">▼</div>
+    <div class="box frozen" style="border-color:#4a5666"><div class="t">③ SCORE (cosine, in-cell only)</div>
+      <div class="d" style="font-family:monospace;font-size:11px;color:#d7dde6">
+      s = 0.5·sim<sub>A</sub> + 0.5·sim<sub>B</sub> + 0.05·log p(cell)</div>
+      <div class="d">the classifier only gets a <b>weak vote</b> (λ = 0.05) — that's why a
+      confident-but-wrong country prediction can still be overruled by a strong visual match</div></div>
+    <div class="arrow">▼</div>
+    <div class="box data"><span class="p">4.9 GB</span><div class="t">④ RERANK top-200</div>
+      <div class="d">each image also stored as a 4×4 grid of regional descriptors
+      (PCA-whitened to 128-d); chamfer match makes it framing-invariant. +0.5 pts</div></div>
+    <div class="arrow">▼</div>
+    <div class="box head"><div class="t">⑤ SNAP</div>
+      <div class="d">output the coordinates <b>of the single best-matching training photo</b> —
+      not a cell centre. This is what removes the 34 km floor.</div></div>
+    <div class="note">Cost: ~1.2 s per guess on a laptop CPU.</div>
+  </div>
+
+  <!-- COLUMN 4 : what bought what -->
+  <div class="col" style="width:300px">
+    <div class="hdr">4 · what each stage bought</div>
+    <div class="box frozen" style="padding-bottom:4px">
+      <table>
+        <tr><td>ratchet baseline</td><td class="n">433 km</td></tr>
+        <tr><td>~60 ratchet experiments</td><td class="n">205</td></tr>
+        <tr><td>full run (1.2 M, 3 ep)</td><td class="n">104.7</td></tr>
+        <tr><td>full run #2 (all wins)</td><td class="n">104.4</td></tr>
+        <tr><td style="color:#59d3a6">+ retrieval v1</td><td class="n win">78.5</td></tr>
+        <tr><td style="color:#59d3a6">+ tuned gate & snap</td><td class="n win">65.7</td></tr>
+        <tr><td style="color:#59d3a6">+ place head</td><td class="n win">61.2</td></tr>
+        <tr><td style="color:#59d3a6">+ geo-smooth fix</td><td class="n win">49.0</td></tr>
+        <tr><td style="color:#59d3a6">+ blend & rerank</td><td class="n win">43.8</td></tr>
+        <tr><td style="color:#f5b942">+ C3 encoder</td><td class="n" style="color:#f5b942">running</td></tr>
+      </table>
+      <div class="d" style="margin-top:5px">Everything green is <b>inference-time only</b> —
+      the classifier has not been retrained since run #2. Total cost of the green rows: ~$6.</div>
+    </div>
+
+    <div class="hdr" style="margin-top:6px">where the error still lives</div>
+    <div class="box frozen">
+      <table>
+        <tr><td>a training image within 25 km exists</td><td class="n win">100 %</td></tr>
+        <tr><td>…and is inside the gated pool</td><td class="n win">92–98 %</td></tr>
+        <tr><td>…and we actually pick it</td><td class="n" style="color:#f5b942">42.9 %</td></tr>
+      </table>
+      <div class="d" style="margin-top:5px">The gap is <b>entirely matching quality</b>.
+      Not data, not the gate, not the cell scheme — which is why C3 trains the encoder itself.</div>
+    </div>
+
+    <div class="hdr" style="margin-top:6px">trainable parameter budget</div>
+    <div class="box frozen">
+      <table>
+        <tr><td>DINOv3 backbone (frozen)</td><td class="n">300 M</td></tr>
+        <tr><td>LoRA adapters</td><td class="n" style="color:#f5b942">3.15 M</td></tr>
+        <tr><td>trunk + cell/coarse/country heads</td><td class="n" style="color:#7db3ff">12.0 M</td></tr>
+        <tr><td>place heads A + B</td><td class="n" style="color:#59d3a6">8.4 M</td></tr>
+        <tr><td><b>anything ever trained</b></td><td class="n"><b>23.6 M · 7 %</b></td></tr>
+      </table>
+      <div class="d" style="margin-top:5px">We steer a 300 M-parameter vision model with
+      ~1 % of its weight count, plus small heads bolted on top.</div>
+    </div>
+  </div>
+</div>
+</body></html>
