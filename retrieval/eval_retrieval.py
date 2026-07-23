@@ -56,7 +56,15 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--ckpt", default="run_full/ckpt_best.pt")
     ap.add_argument("--index", default="retrieval_index")
+    ap.add_argument("--taps", default="bb,trunk")
+    ap.add_argument("--masses", default="0.8,0.9,0.95")
+    ap.add_argument("--ks", default="4,8,16,32")
+    ap.add_argument("--temps", default="0.02,0.05,0.1,0.2")
     a = ap.parse_args()
+    TAPS = a.taps.split(",")
+    MASSES = [float(x) for x in a.masses.split(",")]
+    KS = [int(x) for x in a.ks.split(",")]
+    TEMPS = [float(x) for x in a.temps.split(",")]
 
     ck = torch.load(a.ckpt, map_location="cpu", weights_only=False)
     bufs = ck["buffers"]
@@ -114,12 +122,12 @@ def main():
     ws, order = p_hon.sort(dim=-1, descending=True)
     cums = ws.cumsum(-1)
     caches = {}
-    for tap in ("bb", "trunk"):
+    for tap in TAPS:
         ix = RetrievalIndex(cat_shards(a.index, f"emb_{tap}", "train"),
                             tdf["latitude"].to_numpy(), tdf["longitude"].to_numpy(),
                             cell_a.cpu().numpy(), n_cells, device=device)
         q_all = F.normalize(v_emb[tap].float(), dim=-1).half()
-        for mass in (0.8, 0.9, 0.95):
+        for mass in MASSES:
             m_counts = (cums < mass).sum(-1) + 1
             sims_c = torch.full((n, K_CACHE), -2.0, device=device)
             units_c = torch.zeros((n, K_CACHE, 3), device=device)
@@ -146,9 +154,9 @@ def main():
     base_unit = latlon_to_unit(base_t[:, 0], base_t[:, 1])
     results = []
     for (tap, mass), (sims_c, units_c, _) in caches.items():
-        for k in (4, 8, 16, 32):
+        for k in KS:
             sk, uk = sims_c[:, :k], units_c[:, :k]
-            for temp in (0.02, 0.05, 0.1, 0.2):
+            for temp in TEMPS:
                 ww = F.softmax(sk / temp, dim=-1) * (sk > -1.5)
                 ww = ww / ww.sum(-1, keepdim=True).clamp(min=1e-9)
                 vv = torch.einsum("nk,nkd->nd", ww, uk)

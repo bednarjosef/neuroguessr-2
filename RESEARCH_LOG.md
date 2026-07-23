@@ -25,6 +25,15 @@ Objective: **`median_km`** (median great-circle error on the val split), **lower
   local run_full2/ckpt_best.pt + HF josefbednar/neuroguessr-fullrun2-ckpt. Lesson: ratchet
   keeps did NOT stack at scale; two different recipes both land ~104 ⇒ 3-epoch regime ceiling.
   Next levers: more epochs (ckpt-chain) and the retrieval stage (built in retrieval/).
+- **RETRIEVAL STAGE (2026-07-23, inference-time on run #2 ckpt_best): median 78.5 km /
+  @1km 10.2% / @25km 35.2% on FULL val** — the biggest single-day move in the project.
+  Two-stage: honest-posterior mass gate over tessellation-A cells → cosine kNN over 1.2M
+  train embeddings → neighbor spherical mean (or k=1 snap). Configs: median-optimal
+  mass0.6/k6/T.005 → 78.52 | precision-optimal mass0.8/k1 → 79.67, @1 10.24%, @25 35.16%.
+  **Backbone-CLS tap beats post-trunk tap in every top config** (geo-training collapses
+  instance detail; tap BEFORE the trunk). Beats single-image PIGEON everywhere; @1km beats
+  even their panorama number. Index: 2.4GB fp16 (bb tap) on HF fullrun2-ckpt repo
+  (retrieval_index/); rebuildable in ~25 min/$1 via retrieval/embed_full.py.
 - **train.py commit:** see autoresearch/2026-07-22-ideas branch (S6 keeps committed there;
   master carries the same file)
 - **one-line:** session-4 stack + **country-level hierarchy** (w=0.5, majority-vote parents)
@@ -368,6 +377,22 @@ _(anything about the box, dataset, VRAM ceilings, throughput, DINOv3 quirks, etc
 ---
 
 ## Session history
+
+### 2026-07-23 (later) — RETRIEVAL ENGINE v1: 104.9 -> 78.5 median, 0->10.2% @1km, 7.7->35.2% @25km
+- Built retrieval/ (embed_full.py sweep, engine.py mass-gated kNN, eval_retrieval.py 2-phase
+  tuner). Swept 1.2M train imgs on the run-#2 box (~905 img/s 4x5090, 21.7 min) at TWO taps.
+- Findings: (1) **bb (backbone-CLS) tap wins every top config** — confirms the collapse
+  hypothesis directionally: geo-trained trunk features lose instance detail; (2) sharp
+  matching wins (k=1-6, temp .005-.01) — "trust the nearest visual match"; (3) tighter mass
+  gates (0.6-0.8) beat 0.9+ — fewer distractors > recall, exactly the distractor-risk tradeoff;
+  (4) similarity floor irrelevant (0.0-0.6 identical) — bad matches are already far, fallback
+  rarely engaged (asymmetry confirmed end-to-end); (5) mean also improves (482->406-428).
+- vs PIGEON: beats their single-image numbers on every metric (median 78.5 vs 131, @25 35 vs
+  24, @1 10.2 vs 0.9); @1km even beats their 4-view PANORAMA 5.36%.
+- Costs: sweep ~$0.7, tuning ~2 min/GPU. All grids in run_full2/retrieval_eval*.log.
+- Next: PCA/PQ-compress index for mobile (target ~20-40MB); wire top-config into webapp;
+  retrain-then-reindex loop (every future model improvement compounds through this stage);
+  per-cell exemplar curation; consider contrastive projection head if a finer tap is needed.
 
 ### 2026-07-23 — FULL RUN #2 (Bulgaria 4x5090 $1.815/hr, 62 min train): official 104.37 (wash)
 - Recipe = run #1 + MSL(0.5/300/T.5) + staggered tessellation B + country-constrained k-means
