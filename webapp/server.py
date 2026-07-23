@@ -163,20 +163,29 @@ print(f"Model ready: {_loaded} trainable tensors loaded, "
 # cosine kNN over 1.2M place-head-projected train embeddings -> k=1 snap with soft prior.
 RETR = None
 _proj = os.path.join(args.index, "train_proj.npy")
+_proj_geo = os.path.join(args.index, "geo_head_10_train.npy")
 if os.path.exists(_proj) and os.path.exists(os.path.join(args.index, "place_head.pt")):
     import sys as _sys
     _sys.path.insert(0, REPO)
     from retrieval.train_place_head import PlaceHead
 
+    def _load_head(fname):
+        ck = torch.load(os.path.join(args.index, fname), map_location="cpu", weights_only=False)
+        h = PlaceHead(ck["dim"], ck["hidden"])
+        h.load_state_dict(ck["state_dict"])
+        h.eval()
+        return h
+
     print("Loading retrieval index…")
     _z = np.load(os.path.join(args.index, "train_latlon.npz"))
     _tr_lat, _tr_lon = _z["lat"].astype(np.float64), _z["lon"].astype(np.float64)
     _N = len(_tr_lat)
-    _ckh = torch.load(os.path.join(args.index, "place_head.pt"),
-                      map_location="cpu", weights_only=False)
-    _head = PlaceHead(_ckh["dim"], _ckh["hidden"])
-    _head.load_state_dict(_ckh["state_dict"])
-    _head.eval()
+    _head = _load_head("place_head.pt")
+    # geo10 head: geo-smooth metric (positives = pairs <10km) — blended 50/50 with the
+    # place head's sims, the measured champion (median 49.0 / @25 41.2% full val).
+    _head_geo = (_load_head("geo_head_10.pt")
+                 if os.path.exists(_proj_geo)
+                 and os.path.exists(os.path.join(args.index, "geo_head_10.pt")) else None)
     _cell_f = os.path.join(args.index, "cell_a.npy")
     if os.path.exists(_cell_f):
         _cell_a = np.load(_cell_f)
@@ -197,8 +206,11 @@ if os.path.exists(_proj) and os.path.exists(os.path.join(args.index, "place_head
     _ends = np.searchsorted(_sorted_cells, np.arange(_n_cells), side="right")
     RETR = {"emb": np.load(_proj, mmap_mode="r"), "lat": _tr_lat, "lon": _tr_lon,
             "cell": _cell_a, "order": _order, "starts": _starts, "ends": _ends,
-            "head": _head, "mass": 0.95, "cap": 400, "lam": 0.05}
-    print(f"Retrieval ready: {_N} exemplars, mass-{RETR['mass']} gate, k=1 snap")
+            "head": _head, "mass": 0.95, "cap": 400, "lam": 0.05,
+            "head_geo": _head_geo,
+            "emb_geo": np.load(_proj_geo, mmap_mode="r") if _head_geo is not None else None}
+    print(f"Retrieval ready: {_N} exemplars, mass-{RETR['mass']} gate, "
+          f"{'geo10+c1 blend' if _head_geo is not None else 'c1'}, k=1 snap")
 else:
     print("Retrieval index not found — serving classifier-only predictions.")
 
@@ -263,10 +275,13 @@ def predict(img: Image.Image) -> dict:
         ids = np.concatenate(segs) if segs else np.empty(0, np.int64)
         if len(ids):
             sims = RETR["emb"][ids].astype(np.float32) @ q
+            if RETR["head_geo"] is not None:
+                qg = RETR["head_geo"](F.normalize(feats, dim=-1))[0].numpy().astype(np.float32)
+                sims = 0.5 * sims + 0.5 * (RETR["emb_geo"][ids].astype(np.float32) @ qg)
             score = sims.astype(np.float64) + RETR["lam"] * np.log(ph[RETR["cell"][ids]].clip(1e-12))
             j = int(ids[score.argmax()])
             plat, plon = float(RETR["lat"][j]), float(RETR["lon"][j])
-            engine = "retrieval-snap"
+            engine = "retrieval-snap" + ("-geo" if RETR["head_geo"] is not None else "")
             match_sim = round(float(sims[score.argmax()]), 4)
 
     # Regional confidence: UNsharpened posterior mass within 250 km of the top-1 A-cell.

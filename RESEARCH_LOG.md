@@ -378,6 +378,24 @@ _(anything about the box, dataset, VRAM ceilings, throughput, DINOv3 quirks, etc
 
 ## Session history
 
+### 2026-07-23 (night 3) — C1.5 GEO-SMOOTH heads (~$0.35): median 61.2 -> 49.0, @25 38.7 -> 41.2%
+- **Diagnosis that unlocked it: C1's same-place objective was subtly WRONG for eval** — val
+  locations are never in the index, so the best reachable match is a different location
+  1-15 km away, and same-place contrastive training explicitly pushes those neighbors apart.
+  Fix = geo-smooth contrastive (retrieval/train_geo_head.py): positives = pairs within
+  d_pos km (same OR neighboring location), in-batch negatives <50km masked (false negs).
+- Two heads (d_pos 25 & 10; ~$0.15 of 1x5090 each, trained on cached embeddings in ~1 min).
+  Eval-realistic probe (own location excluded): raw 4.96% -> geo25 8.9% (+79%).
+- **Full-val GPU grid (40 configs, retrieval/eval_spaces_gpu.py, ~2 min on a 5090):
+  champion = geo10⊕c1 sim blend 50/50: median 49.04 | @1 11.57% | @25 41.16% | @200 73.32%.**
+  Every geo-space config beats every non-geo config at @25. Duds: location-max-pool (no-op
+  under k=1 snap), alpha-QE (consistently ~-0.5pt). Grid log: run_full2/retrieval_index/c15_grid.log.
+- Day summary: **median 104.7 -> 49.0 | @25 7.6 -> 41.2% | @1 0 -> 11.6%**, retrieval total
+  cost ~$1.6. Webapp serves the blend (engine tag retrieval-snap-geo, ~1.2s CPU/guess).
+  Heads mirrored on HF (place_head, geo_head_25, geo_head_10 in fullrun2-ckpt/retrieval_index).
+- Next for 50%: C2 patch-aware descriptors at 512px (in-pool oracle 92-97% still leaves
+  50+ pts of matching headroom); possibly geo-head retrained on C2 descriptors, same recipe.
+
 ### 2026-07-23 (night 2) — PHASE C1 place head (~$0.15): 65.7 -> 61.2 median, @25 36.0 -> 38.7%
 - Contrastive head (residual MLP 1024→2048→1024, zero-init out = identity start, NT-Xent
   τ.07, 2 views/loc positives) trained on CACHED bb embeddings — no images, 10 epochs in
