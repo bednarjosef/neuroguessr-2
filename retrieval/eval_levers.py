@@ -143,7 +143,7 @@ def main():
 
     # lever 4a: PCA whitening fitted on a 200k sample of the index
     if "4" in a.levers:
-        for src in ("cls", "geo10c"):
+        for src in ("cls",):
             if src not in spaces:
                 continue
             tr, va = spaces[src]
@@ -158,21 +158,25 @@ def main():
             for i in range(0, N, 200_000):
                 out[i:i + 200_000] = F.normalize((tr[i:i + 200_000].float() - mu) @ W, dim=-1).half()
             spaces[f"{src}_wh"] = (out, F.normalize((va - mu) @ W, dim=-1))
+            del X, Xc, cov, ev, V
+            torch.cuda.empty_cache()
             print(f"whitened {src}", flush=True)
 
     # lever 4b: CSLS hubness correction — r(x) = mean top-10 sim of x to 20k pseudo-queries
     csls_r = {}
     if "4" in a.levers:
-        q = torch.randint(0, N, (20_000,), device=device)
+        q = torch.randint(0, N, (10_000,), device=device)
         for src in ("cls", "geo10c"):
             if src not in spaces:
                 continue
             tr, _ = spaces[src]
-            Q = tr[q].float()
-            r = torch.empty(N, device=device)
-            for i in range(0, N, 100_000):
-                sims = tr[i:i + 100_000].float() @ Q.T
-                r[i:i + 100_000] = sims.topk(10, dim=1).values.mean(1)
+            Q = tr[q]                       # keep fp16: 10k x 1024
+            r = torch.empty(N, device=device, dtype=torch.float16)
+            for i in range(0, N, 20_000):
+                sims = tr[i:i + 20_000] @ Q.T            # 20k x 10k fp16 = 0.4 GB
+                r[i:i + 20_000] = sims.topk(10, dim=1).values.mean(1)
+                del sims
+            torch.cuda.empty_cache()
             csls_r[src] = r
             print(f"csls r() for {src}: mean {r.mean():.3f}", flush=True)
 
@@ -219,7 +223,7 @@ def main():
             for tag, w, lam_mode, ex in V:
                 s = sum(wt * sims[nm] for nm, wt in w.items())
                 if ex.get("csls"):
-                    corr = sum(wt * csls_r[nm][ids] for nm, wt in w.items() if nm in csls_r)
+                    corr = sum(wt * csls_r[nm][ids].float() for nm, wt in w.items() if nm in csls_r)
                     s = 2 * s - corr
                 lam = 0.05
                 if lam_mode == "adaptive":
