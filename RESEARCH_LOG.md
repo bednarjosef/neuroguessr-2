@@ -439,6 +439,33 @@ train from ARE on HF, so nothing is unrecoverable, just re-spendable).
 **Rule: re-run the mirror as the LAST step before `vast.py down`, and mirror every new .pt as it
 appears, not in one batch.**
 
+### 2026-07-24 (night 5, late) — C4 joint fine-tune: TRAINED, NOT EVALUATED (broken box)
+
+- **C4 = joint encoder+classifier+place-head fine-tune with graded-distance contrastive loss**
+  (Josef's diagnosis of C3's 25-200km regression -> soft targets exp(-d/tau_geo), tau_geo=100).
+  Trains all three at once so the classifier stays valid on the moving encoder (C3's flaw: it
+  froze the classifier, so gate needed the OLD ckpt = 2 forward passes). LoRA now on MLP too
+  (up/down_proj): 7.1M LoRA + 12M classifier + 4.2M place head.
+- **Training COMPLETED (1800 steps, ~1h): con-KL 1.19 -> ~0.4, ce-KL 4.2 -> ~2.7 — both learned.**
+  W&B run c4-joint-graded. Checkpoint mirrored to HF (c4/ckpt.pt, c4/c4_head.pt).
+- **NOT EVALUATED: the box (Bulgaria 45679713) was pathologically slow** — training 33 img/s
+  (vs C3's 260 on prior boxes), and the re-index ran at 23 img/s on GPU 0 ONLY (GPUs 1-3 idle at
+  0%, GPU0 throttled to 547/3090 MHz). Re-index ETA was 3h vs the ~22min it takes on a healthy
+  4x5090. Credit hit $1.78 so the box was destroyed before the re-index finished. **We have NO
+  C4 retrieval number.**
+- **The C4 encoder is saved and re-evaluable in ~30 min on a healthy box** (racing for high
+  clocks/dlperf, verify nvidia-smi shows all 4 GPUs working + full clocks BEFORE the long run):
+  pull c4/ckpt.pt, run embed_c2 --tag c4 (train+val), train the 4 band heads offline, run the
+  CSLS/whitening/rerank grid (eval_levers.py + eval_c2_gpu.py). Champion to beat: 36.96km/46.06%.
+- **Bugs found & fixed tonight (all committed)**: cache-tar filename (AR_N_VAL renames it);
+  blind kill criterion on a low-resolution probe (crashed run 1 via NCCL timeout); probe running
+  on all ranks desynced them past the collective timeout (-> rank 0 only + barrier + 2h PG
+  timeout); autograd all_gather deadlock once a 2nd loss branch was added (-> local contrastive +
+  bucketed manual grad all-reduce); gradient checkpointing hung the first step (-> --no-ckpt).
+- **Cost lesson: SCREEN THE BOX BEFORE THE LONG RUN.** nvidia-smi clocks + a 30-step throughput
+  check would have caught this dud box before ~$5 was spent training on it at 1/7 speed. The
+  race-rent filters dlperf but a host can still be throttled/misconfigured at run time.
+
 ### 2026-07-24 (night 4) — C2 512px re-index: 49.0 -> 43.75 median, @25 41.2 -> 42.9%
 
 - **Champion: geo10_cls512 (+) geo10_mean512 blend + regional chamfer rerank (R200, a0.5),
