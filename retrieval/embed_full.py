@@ -42,7 +42,7 @@ IMAGENET_STD = (0.229, 0.224, 0.225)
 class GeoModelEval(nn.Module):
     """Eval-only mirror of train_full's GeoModel (incl. staggered head B)."""
 
-    def __init__(self, ck):
+    def __init__(self, ck, lora_targets=None, lora_r=None):
         super().__init__()
         from transformers import AutoModel
         from peft import LoraConfig, get_peft_model
@@ -51,8 +51,9 @@ class GeoModelEval(nn.Module):
         n_cells = cfg["n_cells"]
         n_country = len(ck["countries"])
         backbone = AutoModel.from_pretrained(cfg["model"])
-        lora = LoraConfig(r=cfg["lora_r"], lora_alpha=32, lora_dropout=0.05,
-                          target_modules=["q_proj", "k_proj", "v_proj", "o_proj"], bias="none")
+        lora = LoraConfig(r=lora_r or cfg["lora_r"], lora_alpha=32, lora_dropout=0.05,
+                          target_modules=lora_targets or cfg.get("lora_targets") or
+                          ["q_proj", "k_proj", "v_proj", "o_proj"], bias="none")
         self.backbone = get_peft_model(backbone, lora)
         hidden = backbone.config.hidden_size
         self.trunk = nn.Sequential(nn.LayerNorm(hidden), nn.Linear(hidden, HEAD_HIDDEN),
@@ -66,7 +67,10 @@ class GeoModelEval(nn.Module):
             if "." not in name:
                 self.register_buffer(name, b.clone())
 
-    def load_from_ckpt(self, ck):
+    def load_from_ckpt(self, ck, strict=True):
+        """strict=False tolerates ckpt params the model no longer has (e.g. a different LoRA
+        layout); params the model has but the ckpt lacks always keep their init (new adapters
+        are zero-init, so the model starts exactly where the checkpoint left off)."""
         params = dict(self.named_parameters())
         missed = []
         for n, t in ck["trainable"].items():
@@ -74,8 +78,10 @@ class GeoModelEval(nn.Module):
                 params[n].data.copy_(t)
             else:
                 missed.append(n)
-        if missed:
+        if missed and strict:
             raise SystemExit(f"ckpt/model mismatch: {missed[:8]}")
+        if missed:
+            print(f"[model] {len(missed)} ckpt params not in model (ok): {missed[:3]}", flush=True)
         own = dict(self.named_buffers())
         for n, b in ck["buffers"].items():
             if "." in n and n in own and own[n].shape == b.shape:
