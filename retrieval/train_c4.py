@@ -101,7 +101,7 @@ def main():
     ap.add_argument("--warmup", type=int, default=200)
     ap.add_argument("--workers", type=int, default=12)
     ap.add_argument("--probe-every", type=int, default=500)
-    ap.add_argument("--kill-step", type=int, default=1500)
+    ap.add_argument("--kill-step", type=int, default=3000)  # only after the probe can move
     ap.add_argument("--wandb", default="neuroguessr-2-research")
     a = ap.parse_args()
     if WORLD > 1 and not dist.is_initialized():
@@ -154,17 +154,27 @@ def main():
     mean_t = torch.tensor(IMAGENET_MEAN, device=device).view(1, 3, 1, 1)
     std_t = torch.tensor(IMAGENET_STD, device=device).view(1, 3, 1, 1)
 
-    # ---- held-out retrieval probe (the metric the final grid ranks by)
+    # ---- held-out retrieval probe (the metric the final grid ranks by).
+    # A big pool with several views per location so the metric has RESOLUTION: with a tiny pool
+    # almost no query has any neighbour within d_pos and the probe pins near 0 (the C4-run-1
+    # failure). 600 queries x 6000 pool locations (up to 2 views each) -> hundreds of hits.
     rng = np.random.default_rng(0)
-    held = rng.choice(len(uniq), size=1800, replace=False)
+    held = rng.choice(len(uniq), size=6600, replace=False)
     q_loc, p_loc = held[:600], held[600:]
     q_rows = np.array([order[starts[l]] for l in q_loc])
-    p_rows = np.array([r for l in p_loc for r in order[starts[l]:starts[l] + 1]])
+    p_rows = np.array([r for l in p_loc for r in order[starts[l]:starts[l] + 2]])
+    p_of = np.array([l for l in p_loc for _ in order[starts[l]:starts[l] + 2]])
     qu = torch.tensor(uniq[q_loc], dtype=torch.float64, device=device)
-    pu = torch.tensor(uniq[p_loc], dtype=torch.float64, device=device)
-    probe_ok = (haversine_t(qu[:, :1].float(), qu[:, 1:].float(),
-                            pu[:, 0].float().unsqueeze(0), pu[:, 1].float().unsqueeze(0))
-                <= a.d_pos)
+    pu = torch.tensor(uniq[p_of], dtype=torch.float64, device=device)
+    pd_km = haversine_t(qu[:, :1].float(), qu[:, 1:].float(),
+                        pu[:, 0].float().unsqueeze(0), pu[:, 1].float().unsqueeze(0))
+    probe_ok = pd_km <= a.d_pos                       # near-recall@1 within d_pos
+    probe_ok25 = pd_km <= 25.0                        # a second, higher-ceiling band
+    if RANK == 0:
+        cov = float((probe_ok.any(1)).float().mean())
+        cov25 = float((probe_ok25.any(1)).float().mean())
+        print(f"[r0] probe pool {len(p_rows)} imgs | queries with a <= {a.d_pos}km neighbour "
+              f"{100*cov:.0f}%, <= 25km {100*cov25:.0f}% (these are the ceilings)", flush=True)
 
     def embed_rows(rows, bs_=64):
         outs = []
@@ -188,9 +198,11 @@ def main():
         head.eval()
         zq, zp = embed_rows(q_rows), embed_rows(p_rows)
         best = (zq @ zp.T).argmax(1)
+        ar = torch.arange(len(q_rows), device=device)
         model.train()
         head.train()
-        return float(probe_ok[torch.arange(len(q_rows), device=device), best].float().mean())
+        return (float(probe_ok[ar, best].float().mean()),
+                float(probe_ok25[ar, best].float().mean()))
 
     opt = torch.optim.AdamW([{"params": lora_p, "lr": a.lr},
                              {"params": cls_p, "lr": a.lr * 2},
@@ -219,9 +231,15 @@ def main():
             out[RANK] = t
             return torch.cat(out)
 
-    base_probe = probe() if RANK == 0 else 0.0
+    # EVERY rank runs the probe (it does its own forward passes; no collectives inside).
+    # Only rank 0's value is used for logging/decisions, but running it on all ranks keeps them
+    # in lockstep so no rank ever returns early and strands the others in all_gather (the
+    # collective-timeout crash that killed C4 run 1).
+    b1, b25 = probe()
+    base_probe = b1
     if RANK == 0:
-        print(f"[r0] probe @ step 0 (warm start): {base_probe:.4f}", flush=True)
+        print(f"[r0] probe @ step 0 (warm start): @{a.d_pos:.0f}km {b1:.4f} | @25km {b25:.4f}",
+              flush=True)
     model.train()
     head.train()
     step = 0
@@ -260,6 +278,12 @@ def main():
             if fine_b is not None:
                 loss_ce = loss_ce + 0.5 * -(ct * F.log_softmax(fine_b, dim=-1)).sum(1).mean()
 
+            # KL = CE - entropy(target): starts at 0, so it SHOWS progress. Raw CE is floored by
+            # the target's own entropy (~6 for smoothed cell targets), so "6.5 and flat" looks
+            # stuck when it is actually near-optimal.
+            ce_floor = -(ct * (ct.clamp(1e-12).log())).sum(1).mean()
+            con_floor = -(tgt * (tgt.clamp(1e-12).log())).sum(1).mean()
+
             loss = loss_ce + a.lam_c * loss_con
             opt.zero_grad(set_to_none=True)
             loss.backward()
@@ -270,34 +294,55 @@ def main():
 
             if RANK == 0 and step % 25 == 0:
                 ips = step * 2 * a.pairs * WORLD / (time.time() - t0)
-                print(f"step {step}/{a.steps} loss {loss.item():.4f} "
-                      f"(ce {loss_ce.item():.4f} con {loss_con.item():.4f}) "
+                kl_ce = (loss_ce - ce_floor).item()
+                kl_con = (loss_con - con_floor).item()
+                print(f"step {step}/{a.steps} KL(ce {kl_ce:.4f} con {kl_con:.4f}) "
+                      f"loss {loss.item():.4f} "
                       f"({ips:.0f} img/s, ETA {(a.steps-step)*2*a.pairs*WORLD/ips/60:.0f} min)",
                       flush=True)
                 if run:
-                    run.log({"loss": loss.item(), "loss_ce": loss_ce.item(),
-                             "loss_con": loss_con.item(), "img_s": ips,
-                             "lr": sched.get_last_lr()[0]}, step=step)
-            if RANK == 0 and step % a.probe_every == 0:
-                pv = probe()
-                print(f"[r0] probe @ {step}: {pv:.4f} (start {base_probe:.4f})", flush=True)
-                if run:
-                    run.log({"probe_near_recall@1": pv}, step=step)
-                if step >= a.kill_step and pv < base_probe * 1.02:
-                    print(f"[r0] KILL CRITERION: probe {pv:.4f} has not beaten the warm start "
-                          f"{base_probe:.4f} by step {step} — stopping.", flush=True)
-                    save(a, ck, model, head, step)
+                    run.log({"loss": loss.item(), "kl_ce": kl_ce, "kl_con": kl_con,
+                             "loss_ce": loss_ce.item(), "loss_con": loss_con.item(),
+                             "img_s": ips, "lr": sched.get_last_lr()[0]}, step=step)
+
+            # probe on ALL ranks in lockstep; broadcast rank 0's stop decision so no rank
+            # ever exits while another is mid-collective.
+            if step % a.probe_every == 0:
+                pv1, pv25 = probe()
+                stop = torch.zeros(1, device=device)
+                if RANK == 0:
+                    print(f"[r0] probe @ {step}: @{a.d_pos:.0f}km {pv1:.4f} | @25km {pv25:.4f} "
+                          f"(start {base_probe:.4f})", flush=True)
                     if run:
-                        run.finish()
+                        run.log({"probe_near_recall@1": pv1, "probe_recall@25km": pv25}, step=step)
+                    # kill ONLY well past the point the probe has had a chance to move, and only
+                    # if it is actually below the warm start (C4 run 1 killed on a blind probe).
+                    if step >= a.kill_step and pv1 < base_probe and pv25 < b25:
+                        print(f"[r0] KILL: probe below warm start at step {step} "
+                              f"(@10 {pv1:.4f}<{base_probe:.4f}, @25 {pv25:.4f}<{b25:.4f})",
+                              flush=True)
+                        stop[0] = 1.0
+                if WORLD > 1:
+                    dist.broadcast(stop, src=0)
+                if stop.item() > 0:
+                    if RANK == 0:
+                        save(a, ck, model, head, step)
+                        if run:
+                            run.finish()
+                    if WORLD > 1:
+                        dist.barrier()
                     return
             if RANK == 0 and step % 1000 == 0:
                 save(a, ck, model, head, step)
+    fp1, fp25 = probe()                     # all ranks, keeps them in lockstep
     if RANK == 0:
         save(a, ck, model, head, step)
-        print(f"[r0] final probe: {probe():.4f}", flush=True)
+        print(f"[r0] final probe: @{a.d_pos:.0f}km {fp1:.4f} | @25km {fp25:.4f}", flush=True)
         if run:
             run.finish()
         print("C4 TRAIN DONE", flush=True)
+    if WORLD > 1:
+        dist.barrier()
 
 
 def save(a, ck, model, head, step):
