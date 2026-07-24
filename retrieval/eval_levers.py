@@ -128,10 +128,10 @@ def main():
     base_tr = norm_big(cat(d, f"c2_cls_train_{a.tag}_r"))
     base_va = F.normalize(torch.from_numpy(cat(d, f"c2_cls_val_{a.tag}_r")).float().to(device), dim=-1)
     spaces["cls"] = (base_tr, base_va)
-    heads = sorted(f for f in os.listdir(d)
-                   if f.startswith("geo") and f.endswith("_cls_c3.pt"))
+    sfx = f"_cls_{a.tag}.pt"
+    heads = sorted(f for f in os.listdir(d) if f.startswith("geo") and f.endswith(sfx))
     for f in heads:
-        nm = f.replace("_cls_c3.pt", "") + "c"          # geo10_cls_c3.pt -> geo10c
+        nm = f.replace(sfx, "") + "c"                   # geo10_cls_c4.pt -> geo10c
         pth = os.path.join(d, f)
         ck = torch.load(pth, map_location="cpu", weights_only=False)
         head = PlaceHead(ck["dim"], ck["hidden"]).to(device).eval()

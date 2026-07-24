@@ -96,3 +96,35 @@ champion** — using the `research` skill between experiments for fresh, literat
 **Always:** never edit `ENGINE.md`. During research only the **experiment** file is edited; the
 **harness/evaluator is frozen** so the objective can't be gamed. Full control plane:
 `python vast.py --help`.
+
+---
+
+## Session discipline (learned the hard way — 2026-07-24)
+
+**Mirror before teardown, always.** A rented box is ephemeral storage. Push every artefact worth
+keeping to HF (`josefbednar/neuroguessr-fullrun2-ckpt`, folder per phase) **as it is produced**,
+and re-run the mirror as the **last step before `vast.py down`**. On 2026-07-24 the mirror ran
+mid-session while three band heads were still training; the box was destroyed after they finished
+and the champion config became non-reproducible without retraining them. Cheap files (`.pt`
+heads, configs, logs) cost seconds to upload — push them immediately. Big index arrays
+(`c2_*_train_*.npy`, regional descriptors) are the ones that hurt to lose: they are the input to
+every cheap experiment.
+
+**The best known retrieval recipe (2026-07-24, full val: median 36.96 km / @25 km 46.06% /
+@1 km 12.78% / GeoGuessr 4452 per round):**
+
+1. encoder = contrastively fine-tuned backbone (C3/C4), descriptors = backbone CLS
+2. **band heads trained OFFLINE on cached descriptors** at d_pos 5 / 10 / 25 / 50 km — a head
+   trained *inside* the fine-tune scored 10 points worse than the same recipe fit offline
+3. **blend all four bands + the raw descriptor** (a single wider head does not work; the blend does)
+4. **CSLS hubness correction** — biggest cheap win of the night, ~40 s of arithmetic
+5. **PCA whitening** of the raw descriptor
+6. gate = 95 % posterior mass (cap 400 cells), prior weight λ = 0.05, k = 1 snap
+7. **regional chamfer rerank** of the top 50 (R50, α 0.25)
+
+Steps 2–5 run on cached vectors for cents (`retrieval/eval_levers.py`) — **always exhaust them
+before proposing another GPU training run.**
+
+**TODO carried forward:** the 5/25/50 km band heads and the regional descriptors from the C3
+index were lost with that box. They retrain in ~15 min from `c3/c2_cls_train_c3_r*.npy` on HF —
+fold this into the next session rather than renting a box for it alone.
