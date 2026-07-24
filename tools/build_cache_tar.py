@@ -12,6 +12,10 @@ faster upload once and a faster download for every future session. Training and 
 resize to 384 anyway, so the pixels the model sees are unchanged; --size 0 keeps the bytes
 exactly as downloaded if you want a byte-identical cache.
 
+IMPORTANT: export the same AR_N_TRAIN the session uses — the filename prepare.py looks for
+embeds it (AR_N_TRAIN=1198072 -> cache_n1198072_v3000_s1337.tar). Building it with the default
+60000 produces a tar the full-run setup will never find.
+
 Run ON THE BOX, after prepare.py has completed:
   python tools/build_cache_tar.py --size 384 --workers 96          # build + verify + upload
   python tools/build_cache_tar.py --size 384 --limit 200 --no-upload  # 1-minute smoke test
@@ -42,6 +46,60 @@ def _reencode(args):
         return 1
     except Exception:
         return 0
+
+
+def _reencode_bytes(args):
+    """Re-encode straight to bytes — the streaming path needs no staging copy on disk."""
+    src, arc, size = args
+    import io
+    from PIL import Image
+    try:
+        im = Image.open(src)
+        if im.mode != "RGB":
+            im = im.convert("RGB")
+        if size and im.size != (size, size):
+            im = im.resize((size, size), Image.BICUBIC)
+        buf = io.BytesIO()
+        im.save(buf, "JPEG", quality=92, optimize=False)
+        return arc, buf.getvalue()
+    except Exception:
+        return arc, None
+
+
+def stream_tar(out, size, workers, limit):
+    """Re-encode and write directly into the tar. Peak disk = the tar itself, not 2x."""
+    import io
+    base = os.path.basename(P.CACHE_DIR)
+    n_ok = 0
+    t0 = time.time()
+    with tarfile.open(out, "w") as tf:
+        for f in sorted(os.listdir(P.CACHE_DIR)):        # parquets first
+            fp = os.path.join(P.CACHE_DIR, f)
+            if os.path.isfile(fp):
+                tf.add(fp, arcname=f"{base}/{f}")
+        for split in ("train", "val"):
+            src_dir = os.path.join(P.CACHE_DIR, split)
+            if not os.path.isdir(src_dir):
+                continue
+            names = sorted(os.listdir(src_dir))
+            if limit:
+                names = names[:limit]
+            jobs = [(os.path.join(src_dir, n), f"{base}/{split}/{n}", size) for n in names]
+            with ProcessPoolExecutor(max_workers=workers) as ex:
+                for i, (arc, data) in enumerate(ex.map(_reencode_bytes, jobs, chunksize=128), 1):
+                    if data is None:
+                        continue
+                    ti = tarfile.TarInfo(arc)
+                    ti.size = len(data)
+                    ti.mtime = 0
+                    tf.addfile(ti, io.BytesIO(data))
+                    n_ok += 1
+                    if i % 50_000 == 0:
+                        r = i / (time.time() - t0)
+                        print(f"  {split}: {i}/{len(jobs)} ({r:.0f} img/s, "
+                              f"ETA {(len(jobs)-i)/r/60:.1f} min)", flush=True)
+            print(f"  {split}: {len(names)} written ({(time.time()-t0)/60:.1f} min)", flush=True)
+    return n_ok
 
 
 def build_stage(stage, size, workers, limit):
@@ -91,6 +149,8 @@ def main():
     ap.add_argument("--stage", default="/root/cache_stage")
     ap.add_argument("--out", default=None)
     ap.add_argument("--no-upload", action="store_true")
+    ap.add_argument("--stage-copy", action="store_true",
+                    help="stage a full copy before tarring (needs 2x disk; default streams)")
     a = ap.parse_args()
 
     name = P.CACHE_TAR_NAME if not a.limit else P.CACHE_TAR_NAME.replace(".tar", "_smoke.tar")
@@ -98,16 +158,20 @@ def main():
     print(f"cache dir  : {P.CACHE_DIR}", flush=True)
     print(f"target tar : {out}  ->  {P.CACHE_TAR_REPO} (dataset)", flush=True)
 
-    if os.path.exists(a.stage):
-        shutil.rmtree(a.stage)
-    os.makedirs(a.stage)
+    free_gb = shutil.disk_usage(os.path.dirname(out)).free / 2 ** 30
+    print(f"free disk  : {free_gb:.0f} GB", flush=True)
     t0 = time.time()
-    root, n = build_stage(a.stage, a.size, a.workers, a.limit)
-    print(f"staged {n} images in {(time.time()-t0)/60:.1f} min", flush=True)
-
-    t0 = time.time()
-    with tarfile.open(out, "w") as tf:             # no compression: JPEGs are already compressed
-        tf.add(root, arcname=os.path.basename(P.CACHE_DIR))
+    if a.stage_copy:
+        if os.path.exists(a.stage):
+            shutil.rmtree(a.stage)
+        os.makedirs(a.stage)
+        root, n = build_stage(a.stage, a.size, a.workers, a.limit)
+        print(f"staged {n} images in {(time.time()-t0)/60:.1f} min", flush=True)
+        with tarfile.open(out, "w") as tf:         # no compression: JPEGs already compressed
+            tf.add(root, arcname=os.path.basename(P.CACHE_DIR))
+    else:
+        n = stream_tar(out, a.size, a.workers, a.limit)
+        print(f"streamed {n} images", flush=True)
     gb = os.path.getsize(out) / 2 ** 30
     print(f"tar {gb:.1f} GB in {(time.time()-t0)/60:.1f} min", flush=True)
 
