@@ -378,6 +378,67 @@ _(anything about the box, dataset, VRAM ceilings, throughput, DINOv3 quirks, etc
 
 ## Session history
 
+### 2026-07-24 (night 5) — C3 ENCODER FINE-TUNE + LEVER SWEEP: 43.75 -> 36.96 km, @25 42.9 -> 46.1%
+
+- **CHAMPION: C3 descriptors, 4-band head blend (d_pos 5/10/25/50) + CSLS + whitened cls +
+  regional rerank (R50 a0.25), gate = OLD ckpt logits, mass .95 lam .05, k1 snap.
+  Full val: median 36.96 | mean 378.3 | @1 12.78% | @25 46.06% | @200 74.32% | GG 4452/round
+  (22 258 per 5-round game).** Day: 104.7 -> 36.96 median, 7.6 -> 46.06% @25, 0 -> 12.8% @1.
+- **C3 = contrastive fine-tune of the BACKBONE** (retrieval/train_c3_contrastive.py): LoRA warm
+  start from run #2, positives <=10 km, negatives >=50 km masked, region-restricted batches
+  (~500 km) for hard negatives, gathered NT-Xent across 4 GPUs, joint projection head, 2500
+  steps (0.53 epochs, 42 min, 260 img/s). **Raw CLS descriptor 36.32 -> 42.46% @25 (+6.1 pts,
+  the largest single-component jump of the project).**
+- **BUT the naive C3 champion was a wash** (47.57 / 42.73%) until the missing piece was added:
+  run_c3.sh only trained a head on the mean-patch branch. With an offline geo10 head on the C3
+  CLS: 40.97 / 44.33%. **The head trained ONLINE inside the fine-tune scored 33.89% — 10 pts
+  WORSE than the same recipe fit offline on cached vectors.** Train encoders online, heads offline.
+- **Josef's diagnosis of the 25-200 km regression was correct and is now the C4 centrepiece:**
+  the binary loss masks 10-50 km and pushes 50-500 km apart at full strength, and region batches
+  made 50-500 km nearly the only negative seen. @1 km improved while the 25-200 km band decayed.
+  Fix = graded targets exp(-d/tau_geo), the same smoothing the classifier already uses.
+- **LEVER SWEEP on cached descriptors (retrieval/eval_levers.py), all cents:**
+  | lever | median | @25 |
+  | CSLS hubness correction | 39.94 | 44.90% | **biggest cheap win, 40 s of arithmetic** |
+  | 4-band blend 5/10/25/50 | 39.60 | 45.06% | a single wider head (25 km) FAILED; the blend won |
+  | whitened cls | 41.00 | 44.83% |
+  | **all three combined** | **36.96** | **46.06%** | orthogonal, they add |
+  Duds: location top-2 evidence (44.03), adaptive lambda by entropy (43.40 / 41.79), confidence
+  router to the classifier readout (43.96 @25 — but it DOES improve mean 378->368 and @200).
+- **Gate must stay on the OLD checkpoint**: gating with C3's own logits scores 42.93% vs 44.20%.
+  The contrastive fine-tune damages the classifier on the shared trunk -> inference is currently
+  TWO encoder passes. Joint CE+contrastive training (C4) is the fix.
+- Plan for the next run: **docs/C4_PLAN.md** (graded loss, joint objective, MLP LoRA r32, mixed
+  batches, 2 epochs, offline band heads, probe every 250 steps + kill criterion). ~3 h, ~$5.5.
+
+### 2026-07-24 — INFRA: cost/time optimisations (measured, apply to every future session)
+
+1. **Prebuilt cache tar — DONE and live.** tools/build_cache_tar.py re-encodes the cache to 384 px
+   and streams it straight into a tar (staging a copy needs 2x disk; the box had 64 GB free of the
+   90 GB required). Uploaded as `josefbednar/streetview-acw-ar-cache/cache_n1198072_v3000_s1337.tar`
+   (50.1 GB, 83 MB/s). **Setup drops ~28 min -> ~10 min, ~$0.9 saved per session.**
+   Gotcha found by the smoke test: the filename embeds AR_N_TRAIN — build it with
+   `AR_N_TRAIN=1198072` or setup will never find it.
+2. **Freeze the bottom 8 blocks** when fine-tuning (LoRA only in blocks 9-24): backward stops
+   early, ~-30 % step time, low-level texture layers do not need adapting.
+3. **Patch dropout 0.25 + torch.compile** during contrastive training: ~-35 % combined
+   (precedent: the classifier trained at 0.6 dropout and evaluates at full patches).
+4. **Keep every idea in cached-descriptor land as long as possible** — heads and levers cost
+   cents there ($0.15/head) and dollars once images are involved. 104.7 -> 36.96 cost ~$9 total.
+5. **Interruptible instances: REJECTED by Josef** — only ~$1.4/hr vs $1.89 on-demand, not worth
+   the preemption risk.
+6. **Two jobs share a GPU fine** — the limit is VRAM, not policy (head training 12.4 GB, lever
+   sweep 22 GB: two heads per card yes, head + sweep no).
+
+### 2026-07-24 — MISTAKE: mirror artefacts BEFORE the box dies, not once
+
+The HF mirror ran while geo5/geo25/geo50 were still training, so **the 4-band heads and the
+regional descriptors were lost when the box was destroyed** — the 46.06% champion is not exactly
+reproducible without ~15 min of head retraining on a future box (the cached C3 descriptors they
+train from ARE on HF, so nothing is unrecoverable, just re-spendable).
+**Rule: re-run the mirror as the LAST step before `vast.py down`, and mirror every new .pt as it
+appears, not in one batch.**
+
 ### 2026-07-24 (night 4) — C2 512px re-index: 49.0 -> 43.75 median, @25 41.2 -> 42.9%
 
 - **Champion: geo10_cls512 (+) geo10_mean512 blend + regional chamfer rerank (R200, a0.5),
