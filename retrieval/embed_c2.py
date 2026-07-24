@@ -138,6 +138,8 @@ def main():
     ap.add_argument("--regions", action="store_true", default=True)
     ap.add_argument("--no-regions", dest="regions", action="store_false")
     ap.add_argument("--limit", type=int, default=0, help="smoke test: cap rows per rank")
+    ap.add_argument("--train-gate-topk", type=int, default=0,
+                    help="C5 bed: also write each TRAIN image's top-K gate cells+probs")
     a = ap.parse_args()
     tag = a.tag or f"s{a.img_size}"
     os.makedirs(a.out, exist_ok=True)
@@ -204,6 +206,14 @@ def main():
         outs["reg"] = mm("reg", (m, REG_GRID * REG_GRID, a.rdim))
     if a.split == "val":
         outs["logits"] = mm("logits", (m, n_cells))
+    gate_ids = gate_ps = None
+    if a.train_gate_topk and a.split == "train":
+        gate_ids = np.lib.format.open_memmap(
+            os.path.join(a.out, f"c2_gateids_train_{tag}_r{RANK}.npy"),
+            mode="w+", dtype=np.int16, shape=(m, a.train_gate_topk))
+        gate_ps = np.lib.format.open_memmap(
+            os.path.join(a.out, f"c2_gatep_train_{tag}_r{RANK}.npy"),
+            mode="w+", dtype=np.float16, shape=(m, a.train_gate_topk))
     if a.tta:
         for k in ("clsflip", "meanflip", "clszoom", "meanzoom"):
             outs[k] = mm(k, (m, 1024))
@@ -225,6 +235,12 @@ def main():
             if a.split == "val":
                 _, comb, _ = model.heads(cls)
                 outs["logits"][off:off + k] = comb.float().cpu().numpy().astype(np.float16)
+            if gate_ids is not None:
+                _, comb, _ = model.heads(cls)
+                pgate = torch.softmax(comb.float(), dim=-1)
+                tv, ti = pgate.topk(a.train_gate_topk, dim=-1)
+                gate_ids[off:off + k] = ti.cpu().numpy().astype(np.int16)
+                gate_ps[off:off + k] = tv.cpu().numpy().astype(np.float16)
             if a.tta:
                 for src, (ck_, mk_) in ((1, ("clsflip", "meanflip")), (2, ("clszoom", "meanzoom"))):
                     with torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16):

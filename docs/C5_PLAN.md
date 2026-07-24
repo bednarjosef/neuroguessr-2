@@ -98,6 +98,38 @@ it to results.json:
   (encoder → +bands → +CSLS → +E7 → +rules, delta by delta) + the λ dial curve
   (median↔@1km frontier).
 
+## Phase 1 — the run itself (operational; what actually executes)
+
+One driver (`drive_c5.sh`, scratchpad → promoted after first success), one box-side pipeline
+(`retrieval/run_c5.sh`), stage markers, **no `|| true` anywhere**:
+
+1. **Rent + screen**: offers Estonia 45410072 (today's proven box) → Hungary 44842587 →
+   Sweden 45256631; `tools/screen_gpus.py` (≥80 TFLOPs bf16/GPU, 60% of best sibling) +
+   authenticated range-curl of the actual cache tar (≥15 MB/s). Fail → destroy, next.
+2. **Deps + data**: template torch (no download), light pip with retries,
+   `tools/restore_full_cache.py` (marker `CACHE READY`, row counts asserted).
+3. **Smoke (40 steps)**: asserts the probe has resolution (`ceiling @25km 100%` printed and
+   grepped — a blind run cannot proceed past this line), model builds, loss finite.
+4. **Pilots (3 × 200 steps)**: `c5-pilot-base` / `c5-pilot-fullpatch` (PATCH_KEEP 1.0) /
+   `c5-pilot-epw035` (EP_W 0.35). Deterministic selection: full patches only if probe@200
+   beats base by >1pt (it costs ~2× time); same bar for the episode-weight change.
+5. **Main train** (`c5-bed-main`): 1 epoch interleaved = full CE pass + equal episode
+   batches ≈ 2.4M views ≈ 9,360 steps @ global bs 256. Kill criteria: loss NaN/diverged
+   (built-in), no final eval marker. `AR_RESUME=none` — from-scratch is the contract.
+6. **Bed derivation**: embed train (+gate top-50) → embed val (+logits) → centroids export
+   → val patch dump ∥ episode cache → band heads 5/10/25 (parallel per GPU).
+7. **`tools/check_bed_manifest.py`** must print `MANIFEST OK` — the box is not destroyed
+   without it (driver mirrors everything and reports the failure otherwise).
+8. **Mirror after every stage** to HF `c5/`; driver polls every 60s, balance-guarded
+   (emergency mirror + down if credit < $2), hard cap 280 min, `vast.py ps` verified after
+   teardown.
+
+W&B (project `neuroguessr-2-research`): per-step `loss/{ce,msl,ep,ep_kl,attr}`,
+`attr/acc_{drive,koppen}`, `train/{img_per_s,grad_norm,vram_gb,is_episode,lr_mult}`;
+`probe/near_recall{25,10}` every 500 steps (plus step 0 baseline); `val/*` full quick-val
+panel every ~390 steps; pilots and main as separate named runs; final full-val panel in
+`final/*` + summary.
+
 ## Session plan & budget
 
 | stage | time | notes |

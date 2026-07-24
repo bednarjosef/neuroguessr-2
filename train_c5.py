@@ -1,0 +1,1178 @@
+"""
+FULL-DATASET training run (all ~1.2M train images) — not a ratchet experiment.
+
+Same champion architecture as train.py (DINOv3 ViT-L/16 + LoRA r16, 384px, PatchDropout 0.6,
+k-means geocells + 64/512 hier levels + tau-smoothed country level, mode-seeking predict),
+adapted for one long run:
+  - step-based cosine schedule over AR_EPOCHS (default 3) full passes of the dataset
+  - runs on 1..N GPUs from the same file: under torchrun each rank takes a disjoint shard
+    of every epoch's permutation and gradients are all-reduced (the backbone is frozen, so
+    only the ~10M trainable params sync — a few ms/step)
+  - eval every ~100k samples on the fixed 1000-image val subset, plus a step-0 eval and a
+    final full-val eval (the official median_km panel)
+  - checkpoints every ~200k samples + on every new best median: trainable params, ALL model
+    buffers (geocells — so a resume on a different box keeps identical cells), optimizer,
+    exact step/epoch/batch position, W&B run id. Resume with AR_RESUME=auto.
+  - optional off-box safety: AR_CKPT_HF_REPO=<user/repo> uploads best/last checkpoints to a
+    private HF repo in a background thread (box death then costs at most CKPT_SAMPLES).
+
+Env knobs: AR_EPOCHS (3), AR_CELLS (5000), AR_MAX_STEPS (smoke test), AR_RESUME (auto|none|path),
+AR_CKPT_HF_REPO, AR_RUN_NAME (W&B run id), AR_TIME_BUDGET (wall backstop seconds, default 24h).
+"""
+
+import os
+os.environ["PYTORCH_ALLOC_CONF"] = "expandable_segments:True"
+os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+import math
+import random
+import re
+import threading
+import time
+from contextlib import contextmanager
+
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.utils.data import Dataset, DataLoader, Subset
+
+import prepare as _prepare
+from prepare import (QUICK_VAL_N, EARTH_RADIUS_KM, load_index, open_image,
+                     evaluate_geo, TrainingTimeUp, start_training_clock, stop_training_clock)
+
+# ---------------------------------------------------------------------------
+# Distributed setup (torchrun sets RANK/WORLD_SIZE/LOCAL_RANK; plain python = 1 GPU)
+# ---------------------------------------------------------------------------
+
+RANK = int(os.environ.get("RANK", "0"))
+WORLD = int(os.environ.get("WORLD_SIZE", "1"))
+LOCAL_RANK = int(os.environ.get("LOCAL_RANK", "0"))
+DIST = WORLD > 1
+if DIST:
+    import torch.distributed as dist
+    from datetime import timedelta
+    dist.init_process_group("nccl", timeout=timedelta(minutes=30))
+    torch.cuda.set_device(LOCAL_RANK)
+is_main = RANK == 0
+
+
+def p0(*a, **kw):
+    if is_main:
+        print(*a, **kw, flush=True)
+
+
+@contextmanager
+def rank0_first():
+    """Rank 0 runs the body first (builds caches / downloads weights); others wait, then
+    run the same body against the warm cache."""
+    if DIST and not is_main:
+        dist.barrier()
+    yield
+    if DIST and is_main:
+        dist.barrier()
+
+# ---------------------------------------------------------------------------
+# Hyperparameters — champion stack (train.py @ 1dfceb0) + full-run knobs
+# ---------------------------------------------------------------------------
+
+MODEL_NAME = "facebook/dinov3-vitl16-pretrain-lvd1689m"
+IMG_SIZE = 384
+NUM_PREFIX_TOKENS = 5
+IMAGENET_MEAN = (0.485, 0.456, 0.406)
+IMAGENET_STD = (0.229, 0.224, 0.225)
+
+LORA_R = 16
+LORA_ALPHA = 32
+LORA_DROPOUT = 0.05
+LORA_TARGETS = ["q_proj", "k_proj", "v_proj", "o_proj", "up_proj", "down_proj"]
+GRAD_CHECKPOINT = False
+
+HIER_CELLS = [64, 512]
+HIER_LOSS_W = [0.25, 0.5]
+COUNTRY_LOSS_W = 0.5
+COUNTRY_TAU_KM = 300.0
+# 5000 fine cells (vs 2048 at 60k imgs): 1.2M/5000 = 240 imgs/cell — the same per-cell density
+# PIGEON trained at (500k/2000). Lowers the quantization floor the S5 H3 experiments hit.
+N_CELLS = int(os.environ.get("AR_CELLS", "5000"))
+KMEANS_ITERS = 25
+# Country-constrained cells: k-means runs per country (cell budget ∝ data share), so no cell
+# straddles a border and the cell->country term in the combined head is exact by construction
+# (PIGEON's semantic-cell edge; measured 2026-07-23 that straddling mislabels the country term).
+CC_CELLS = os.environ.get("AR_CC_CELLS", "1") == "1"
+# Staggered tessellation B (S6 keep, -4.0 km): second fine head on a different k-means seed;
+# the readout mixes both centroid sets -> effective cells = Voronoi intersection (dithered
+# quantization, halves the effective floor without starving either head of data).
+STAGGER = os.environ.get("AR_STAGGER", "1") == "1"
+# MSL (S6 keep, -6.2 km): differentiate through the ACTUAL prediction rule — softmax over
+# cells -> prob-weighted spherical mean -> geodesic km to truth — wrapped in a REDESCENDING
+# robust loss (Geman-McClure d^2/(d^2+s^2)): gradient vanishes on hopeless far misses so the
+# model spends capacity on the fixable middle mass (= the median), and shading mass across
+# neighboring cells learns sub-cell interpolation (attacks the quantization floor).
+MSL_W = float(os.environ.get("AR_MSL_W", "0.5"))
+MSL_S_KM = 300.0
+MSL_TEMP = 0.5                 # match PRED_TEMP so training matches the sharpened readout
+# Geo-safe train-time augmentation (exp 15: RRC 0.5-1.0 area + jitter 0.15, NO flips —
+# neutral at 0.5 epochs, parked for long runs; 3 epochs x 1.2M is that long run).
+AUG = os.environ.get("AR_AUG", "1") == "1"
+SMOOTH_TAU_KM = 75.0
+PRED_TOPK = 16
+PRED_TEMP = 0.5
+PRED_RADIUS_KM = 1000.0
+HEAD_HIDDEN = 1024
+HEAD_DROPOUT = 0.1
+POOL = "cls"
+PATCH_KEEP = float(os.environ.get("AR_PATCH_KEEP", "0.6"))
+
+# Optimization — bs84/GPU: the champion's bs96 peaks at 31.0GB on a 32GB 5090, and NCCL's
+# DDP communicator buffers add ~0.5-1GB/rank on top (smoke-test OOM); 84 is the fallback
+# pairing session 5 validated with PATCH_KEEP 0.6. LRs sqrt-scale with world size.
+DEVICE_BATCH_SIZE = int(os.environ.get("AR_BS", "64"))  # MLP-LoRA activations need headroom
+LR_SCALE = math.sqrt(WORLD)
+LORA_LR = 1e-4 * LR_SCALE
+HEAD_LR = 1e-3 * LR_SCALE
+WEIGHT_DECAY = 0.05
+ADAM_BETAS = (0.9, 0.95)
+FINAL_LR_FRAC = 0.05
+NUM_WORKERS = max(4, min(16, (os.cpu_count() or 32) // WORLD - 2))
+
+EPOCHS = int(os.environ.get("AR_EPOCHS", "1"))  # 1 epoch = full CE pass + equal episodes
+GLOBAL_BS = DEVICE_BATCH_SIZE * WORLD
+EVAL_SAMPLES = 100_000          # quick eval every ~100k samples (36 evals over 3 epochs)
+CKPT_SAMPLES = 200_000          # periodic checkpoint every ~200k samples
+DATA_ORDER_SEED = 1234          # per-epoch permutation seed (part of exact resume)
+RUN_DIR = os.environ.get("AR_RUN_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                                    "run_c5"))
+# C5 knobs
+EP_E = int(os.environ.get("AR_EP_E", "4"))            # episodes per batch
+EP_M = DEVICE_BATCH_SIZE // EP_E                       # members per episode (16 @ bs64)
+EP_TAU = float(os.environ.get("AR_EP_TAU", "0.07"))
+EP_TAU_GEO = float(os.environ.get("AR_EP_TAU_GEO", "100.0"))
+EP_W = float(os.environ.get("AR_EP_W", "0.7"))
+EP_RAMP = int(os.environ.get("AR_EP_RAMP", "500"))
+ATTR_W = float(os.environ.get("AR_ATTR_W", "0.15"))
+PROBE_EVERY = int(os.environ.get("AR_PROBE_EVERY", "500"))
+PROBE_POOL_LOCS = 6000
+PROBE_QUERIES = 800
+CKPT_HF_REPO = os.environ.get("AR_CKPT_HF_REPO", "")
+WANDB_PROJECT = os.environ.get("WANDB_PROJECT", "neuroguessr-2-research")
+MAX_STEPS_OVERRIDE = int(os.environ.get("AR_MAX_STEPS", "0"))   # smoke-test cap
+WALL_BACKSTOP_S = int(os.environ.get("AR_TIME_BUDGET", str(24 * 3600)))
+
+# ---------------------------------------------------------------------------
+# Setup
+# ---------------------------------------------------------------------------
+
+t_start = time.time()
+torch.manual_seed(42)                      # identical CPU init on every rank
+np.random.seed(42)
+torch.cuda.manual_seed_all(42 + RANK)      # rank-decorrelated PatchDropout masks
+torch.set_float32_matmul_precision("high")
+device = torch.device("cuda", LOCAL_RANK)
+autocast_ctx = torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16)
+
+MEAN_T = torch.tensor(IMAGENET_MEAN, device=device).view(1, 3, 1, 1)
+STD_T = torch.tensor(IMAGENET_STD, device=device).view(1, 3, 1, 1)
+
+
+def latlon_to_unit(lat, lon):
+    lat = torch.deg2rad(lat); lon = torch.deg2rad(lon)
+    x = torch.cos(lat) * torch.cos(lon)
+    y = torch.cos(lat) * torch.sin(lon)
+    z = torch.sin(lat)
+    return torch.stack([x, y, z], dim=-1)
+
+
+def unit_to_latlon(v):
+    v = F.normalize(v, dim=-1)
+    lat = torch.rad2deg(torch.asin(v[..., 2].clamp(-1, 1)))
+    lon = torch.rad2deg(torch.atan2(v[..., 1], v[..., 0]))
+    return lat, lon
+
+
+def haversine_km_t(lat1, lon1, lat2, lon2):
+    lat1, lon1, lat2, lon2 = map(torch.deg2rad, (lat1, lon1, lat2, lon2))
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+    a = torch.sin(dlat / 2) ** 2 + torch.cos(lat1) * torch.cos(lat2) * torch.sin(dlon / 2) ** 2
+    return 2 * EARTH_RADIUS_KM * torch.asin(torch.sqrt(a.clamp(0, 1)))
+
+
+def assign_cells(pts, centroids, chunk=100_000):
+    """Nearest-centroid assignment, chunked over points (1.2M x 5000 sims would be 24GB)."""
+    out = torch.empty(pts.size(0), dtype=torch.long, device=pts.device)
+    for i in range(0, pts.size(0), chunk):
+        out[i:i + chunk] = (pts[i:i + chunk] @ centroids.T).argmax(dim=1)
+    return out
+
+# ---------------------------------------------------------------------------
+# Geocells (disk-cached; rank 0 builds, other ranks read the cache)
+# ---------------------------------------------------------------------------
+
+def _kmeans_sphere(pts, k, iters, seed):
+    k = max(1, min(int(k), pts.size(0)))
+    g = torch.Generator(device=device).manual_seed(int(seed) % (2 ** 62))
+    idx = torch.randperm(pts.size(0), generator=g, device=device)[:k]
+    centroids = pts[idx].clone()
+    for _ in range(iters):
+        assign = assign_cells(pts, centroids)
+        new = torch.zeros_like(centroids)
+        new.index_add_(0, assign, pts)
+        counts = torch.zeros(k, device=device).index_add_(
+            0, assign, torch.ones(pts.size(0), device=device))
+        mask = counts > 0
+        new[mask] = F.normalize(new[mask], dim=-1)
+        centroids[mask] = new[mask]
+    return centroids
+
+
+def build_geocells(train_df, n_cells, iters, seed=0, by_country=False):
+    from prepare import CACHE_DIR
+    _sfx = ("" if seed == 0 else f"_s{seed}") + ("_cc" if by_country else "")
+    _ck = os.path.join(CACHE_DIR, f"geocells_{n_cells}_{iters}_{len(train_df)}{_sfx}.pt")
+    if os.path.exists(_ck):
+        d = torch.load(_ck, map_location=device)
+        return d["centroids"], d["cell_lat"], d["cell_lon"]
+    lat = torch.tensor(train_df["latitude"].to_numpy(), dtype=torch.float32, device=device)
+    lon = torch.tensor(train_df["longitude"].to_numpy(), dtype=torch.float32, device=device)
+    pts = latlon_to_unit(lat, lon)
+    if not by_country:
+        centroids = _kmeans_sphere(pts, n_cells, iters, seed)
+    else:
+        # Per-country budgets by largest remainder (min 1, max #points), then k-means inside
+        # each country separately — cells can never straddle a border.
+        codes = train_df["country_code"].fillna("??").astype(str).to_numpy()
+        uniq, counts = np.unique(codes, return_counts=True)
+        quota = counts.astype(np.float64) / counts.sum() * n_cells
+        budget = np.minimum(np.maximum(1, np.floor(quota).astype(np.int64)), counts)
+        frac_order = np.argsort(-(quota - np.floor(quota)))
+        i = 0
+        while budget.sum() < n_cells and i < 10 * len(uniq):
+            j = frac_order[i % len(uniq)]
+            if budget[j] < counts[j]:
+                budget[j] += 1
+            i += 1
+        while budget.sum() > n_cells and budget.max() > 1:
+            budget[int(np.argmax(budget))] -= 1
+        parts = []
+        for j, c in enumerate(uniq):
+            sub = pts[torch.from_numpy(codes == c).to(device)]
+            parts.append(_kmeans_sphere(sub, int(budget[j]), iters, seed * 1_000_003 + j + 1))
+        centroids = torch.cat(parts)
+        assert centroids.size(0) == n_cells, f"cc cells {centroids.size(0)} != {n_cells}"
+    cell_lat, cell_lon = unit_to_latlon(centroids)
+    centroids, cell_lat, cell_lon = centroids.detach(), cell_lat.detach(), cell_lon.detach()
+    try:
+        torch.save({"centroids": centroids, "cell_lat": cell_lat, "cell_lon": cell_lon}, _ck)
+    except OSError:
+        pass
+    return centroids, cell_lat, cell_lon
+
+# ---------------------------------------------------------------------------
+# Dataset / dataloader
+# ---------------------------------------------------------------------------
+
+class GeoDataset(Dataset):
+    def __init__(self, split, size):
+        self.img_dir, self.df = load_index(split)
+        self.size = size
+        self.augment = AUG and split == "train"
+        self.lat = self.df["latitude"].to_numpy(dtype=np.float32)
+        self.lon = self.df["longitude"].to_numpy(dtype=np.float32)
+        self.paths = self.df["path"].tolist()
+        self.country = (self.df["country_code"].fillna("??").astype(str)
+                        .map(lambda c: C2I.get(c, 0)).to_numpy(dtype=np.int64))
+
+    def __len__(self):
+        return len(self.paths)
+
+    def __getitem__(self, i):
+        from PIL import Image, ImageEnhance
+        img = open_image(self.img_dir, self.paths[i])
+        if self.augment:
+            w, h = img.size
+            side = max(1, int(min(w, h) * math.sqrt(random.uniform(0.5, 1.0))))
+            x0 = random.randint(0, w - side)
+            y0 = random.randint(0, h - side)
+            img = img.crop((x0, y0, x0 + side, y0 + side))
+            img = img.resize((self.size, self.size), Image.BICUBIC)
+            for enh in (ImageEnhance.Brightness, ImageEnhance.Contrast, ImageEnhance.Color):
+                img = enh(img).enhance(random.uniform(0.85, 1.15))
+        else:
+            img = img.resize((self.size, self.size), Image.BICUBIC)
+        arr = torch.from_numpy(np.asarray(img, dtype=np.uint8)).permute(2, 0, 1)
+        return arr, self.lat[i], self.lon[i], self.country[i], i
+
+
+def collate(batch):
+    imgs = torch.stack([b[0] for b in batch])
+    lat = torch.tensor([b[1] for b in batch])
+    lon = torch.tensor([b[2] for b in batch])
+    ctry = torch.tensor([b[3] for b in batch], dtype=torch.long)
+    idx = torch.tensor([b[4] for b in batch], dtype=torch.long)
+    return imgs, lat, lon, ctry, idx
+
+
+def normalize_batch(imgs_uint8):
+    x = imgs_uint8.to(device, non_blocking=True).float().div_(255.0)
+    return (x - MEAN_T) / STD_T
+
+# ---------------------------------------------------------------------------
+# Model (identical to champion train.py)
+# ---------------------------------------------------------------------------
+
+class GeoModel(nn.Module):
+    def __init__(self, centroids, cell_lat, cell_lon, hier=(), cell_country=None, n_country=0,
+                 tess_b=None):
+        super().__init__()
+        from transformers import AutoModel
+        from peft import LoraConfig, get_peft_model
+
+        backbone = AutoModel.from_pretrained(MODEL_NAME)
+        import inspect
+        self._fwd_extra = ({"interpolate_pos_encoding": True}
+                           if "interpolate_pos_encoding" in inspect.signature(backbone.forward).parameters
+                           else {})
+        if GRAD_CHECKPOINT:
+            backbone.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
+        lora = LoraConfig(r=LORA_R, lora_alpha=LORA_ALPHA, lora_dropout=LORA_DROPOUT,
+                          target_modules=LORA_TARGETS, bias="none")
+        self.backbone = get_peft_model(backbone, lora)
+        hidden = backbone.config.hidden_size
+        feat_dim = hidden * (2 if POOL == "cls_mean" else 1)
+
+        self.trunk = nn.Sequential(
+            nn.LayerNorm(feat_dim),
+            nn.Linear(feat_dim, HEAD_HIDDEN),
+            nn.GELU(),
+            nn.Dropout(HEAD_DROPOUT),
+        )
+        self.fine_head = nn.Linear(HEAD_HIDDEN, N_CELLS)
+        # Staggered tessellation B: independent fine head on a different k-means seed; the
+        # combined readout mixes both centroid sets -> effective cells = Voronoi intersection.
+        self.fine_head_b = nn.Linear(HEAD_HIDDEN, N_CELLS) if tess_b is not None else None
+        if tess_b is not None:
+            cb, cblat, cblon = tess_b
+            self.register_buffer("centroids_b", cb)
+            self.register_buffer("cell_lat_b", cblat)
+            self.register_buffer("cell_lon_b", cblon)
+        self.coarse_heads = nn.ModuleList([nn.Linear(HEAD_HIDDEN, c) for c in HIER_CELLS])
+        self.country_head = nn.Linear(HEAD_HIDDEN, n_country) if n_country else None
+        # C5 attribute heads (free coordinate-derived labels): drive side / Köppen / lat band
+        self.attr_heads = nn.ModuleDict({
+            "drive": nn.Linear(HEAD_HIDDEN, 2),
+            "kop": nn.Linear(HEAD_HIDDEN, 6),
+            "band": nn.Linear(HEAD_HIDDEN, 12),
+        })
+        if cell_country is not None:
+            self.register_buffer("cell_country", cell_country)
+        self.register_buffer("centroids", centroids)
+        self.register_buffer("cell_lat", cell_lat)
+        self.register_buffer("cell_lon", cell_lon)
+        for l, (cc, clat, clon) in enumerate(hier):
+            self.register_buffer(f"coarse_lat_{l}", clat)
+            self.register_buffer(f"coarse_lon_{l}", clon)
+            self.register_buffer(f"parent_{l}", (centroids @ cc.T).argmax(dim=1))
+
+    def _core(self):
+        bb = self.backbone
+        core = getattr(bb, "base_model", bb)
+        return getattr(core, "model", core)
+
+    def encode(self, hs, cos, sin):
+        core = self._core()
+        enc = getattr(core, "model", None) or core.layer
+        out = enc(hs, (cos, sin))
+        return core.norm(out.last_hidden_state)
+
+    def features(self, pixel_values):
+        core = self._core()
+        hs = core.embeddings(pixel_values.to(core.embeddings.patch_embeddings.weight.dtype))
+        cos, sin = core.rope_embeddings(pixel_values)
+        if self.training and PATCH_KEEP < 1.0:
+            n_patch = cos.shape[0]
+            keep = max(1, int(n_patch * PATCH_KEEP))
+            idx = torch.randperm(n_patch, device=hs.device)[:keep]
+            hs = torch.cat([hs[:, :NUM_PREFIX_TOKENS], hs[:, NUM_PREFIX_TOKENS:][:, idx]], dim=1)
+            cos, sin = cos[idx], sin[idx]
+        h = self.encode(hs, cos, sin)
+        if POOL == "cls":
+            f = h[:, 0]
+        elif POOL == "mean":
+            f = h[:, NUM_PREFIX_TOKENS:].mean(dim=1)
+        else:
+            f = torch.cat([h[:, 0], h[:, NUM_PREFIX_TOKENS:].mean(dim=1)], dim=-1)
+        return f
+
+    def head_logits(self, feats):
+        h = self.trunk(feats)
+        fine = self.fine_head(h)
+        coarse = [ch(h) for ch in self.coarse_heads]
+        comb = fine
+        for l, cl in enumerate(coarse):
+            comb = comb + cl[:, getattr(self, f"parent_{l}")]
+        country = None
+        if self.country_head is not None:
+            country = self.country_head(h)
+            comb = comb + F.log_softmax(country, dim=-1)[:, self.cell_country]
+        fine_b = self.fine_head_b(h) if self.fine_head_b is not None else None
+        return comb, coarse, country, fine_b
+
+    def logits(self, pixel_values):
+        out = self.head_logits(self.features(pixel_values).float())
+        return out[0], out[3]
+
+    @torch.no_grad()
+    def predict_latlon(self, pixel_values, topk=PRED_TOPK, collect=None):
+        logits_a, logits_b = self.logits(pixel_values)
+        probs = F.softmax(logits_a.float() / PRED_TEMP, dim=-1)
+        if collect is not None:
+            collect.append(probs.topk(min(50, probs.size(-1)), dim=-1).indices.cpu())
+        if logits_b is not None:   # union of both tessellations, half weight each
+            probs_b = F.softmax(logits_b.float() / PRED_TEMP, dim=-1)
+            probs = torch.cat([probs * 0.5, probs_b * 0.5], dim=-1)
+            all_lat = torch.cat([self.cell_lat, self.cell_lat_b])
+            all_lon = torch.cat([self.cell_lon, self.cell_lon_b])
+            all_cents = torch.cat([self.centroids, self.centroids_b])
+        else:
+            all_lat, all_lon, all_cents = self.cell_lat, self.cell_lon, self.centroids
+        k = min(2 * topk if logits_b is not None else topk, probs.size(-1))
+        w, idx = probs.topk(k, dim=-1)
+        d_top1 = haversine_km_t(all_lat[idx[:, :1]], all_lon[idx[:, :1]],
+                                all_lat[idx], all_lon[idx])
+        w = w * (d_top1 <= PRED_RADIUS_KM)
+        w = w / w.sum(dim=-1, keepdim=True).clamp(min=1e-9)
+        cents = all_cents[idx]
+        v = (w.unsqueeze(-1) * cents).sum(dim=1)
+        return unit_to_latlon(v)
+
+
+def soft_targets(true_lat, true_lon, cell_lat, cell_lon, tau_km):
+    d = haversine_km_t(true_lat.unsqueeze(1), true_lon.unsqueeze(1),
+                       cell_lat.unsqueeze(0), cell_lon.unsqueeze(0))
+    return F.softmax(-d / tau_km, dim=-1)
+
+# ---------------------------------------------------------------------------
+# Build cells, country level, model (rank 0 first so caches/downloads happen once)
+# ---------------------------------------------------------------------------
+
+_, train_df = load_index("train")
+N_TRAIN_IMGS = len(train_df)
+p0(f"Train pool: {N_TRAIN_IMGS} images | Backbone: {MODEL_NAME} @ {IMG_SIZE}px | "
+   f"{WORLD} GPU(s) x bs{DEVICE_BATCH_SIZE} = global {GLOBAL_BS}")
+
+with rank0_first():
+    centroids, cell_lat, cell_lon = build_geocells(train_df, N_CELLS, KMEANS_ITERS,
+                                                   by_country=CC_CELLS)
+    TESS_B = (build_geocells(train_df, N_CELLS, KMEANS_ITERS, seed=1, by_country=CC_CELLS)
+              if STAGGER else None)
+    hier = [build_geocells(train_df, c, KMEANS_ITERS) for c in HIER_CELLS]
+p0(f"Geocells: {N_CELLS} fine{' (country-constrained)' if CC_CELLS else ''}"
+   f"{' x2 staggered' if STAGGER else ''} + hierarchy {HIER_CELLS} "
+   f"(k-means, {KMEANS_ITERS} iters) | MSL_W={MSL_W} | aug={'on' if AUG else 'off'}")
+
+_cc = train_df["country_code"].fillna("??").astype(str)
+COUNTRIES = sorted(_cc.unique().tolist())
+C2I = {c: i for i, c in enumerate(COUNTRIES)}
+N_COUNTRY = len(COUNTRIES)
+with torch.no_grad():
+    _tlat = torch.tensor(train_df["latitude"].to_numpy(), dtype=torch.float32, device=device)
+    _tlon = torch.tensor(train_df["longitude"].to_numpy(), dtype=torch.float32, device=device)
+    _pts = latlon_to_unit(_tlat, _tlon)
+    _assign = assign_cells(_pts, centroids)
+    _pc = torch.tensor(_cc.map(C2I).to_numpy(dtype=np.int64), device=device)
+    _counts = torch.zeros(N_CELLS, N_COUNTRY, device=device)
+    _counts.index_put_((_assign, _pc), torch.ones_like(_pc, dtype=torch.float32), accumulate=True)
+    _empty = _counts.sum(dim=1) == 0
+    _counts[_empty] = _counts.sum(dim=0)
+    CELL_COUNTRY = _counts.argmax(dim=1)
+    _csum = torch.zeros(N_COUNTRY, 3, device=device).index_add_(0, _pc, _pts)
+    COUNTRY_LAT, COUNTRY_LON = unit_to_latlon(F.normalize(_csum, dim=-1))
+    del _tlat, _tlon, _pts, _assign, _pc, _counts, _csum
+p0(f"Countries: {N_COUNTRY} (majority-vote parents for {N_CELLS} cells)")
+
+# ---------------------------------------------------------------------------
+# C5: attribute labels, location tables, episode sampler, retrieval probe
+# ---------------------------------------------------------------------------
+
+_attr = np.load(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                             "data", "attr_labels_train.npz"), allow_pickle=True)
+assert len(_attr["lat"]) == N_TRAIN_IMGS, "attr table rows != train rows (order mismatch?)"
+assert np.abs(_attr["lat"] - train_df["latitude"].to_numpy()).max() < 1e-6, \
+    "attr table coordinate mismatch — rebuild tools/build_attribute_table.py"
+KOP_CLASSES = ["A", "B", "C", "D", "E", "?"]
+_k2i = {c: i for i, c in enumerate(KOP_CLASSES)}
+KOP_T = torch.tensor([_k2i.get(str(k), 5) for k in _attr["koppen_major"]],
+                     dtype=torch.long, device=device)
+BAND_T = torch.tensor(np.clip(_attr["lat_band"].astype(np.int64), 0, 11), device=device)
+_drive_img = torch.tensor(_attr["drive_left"].astype(np.int64), device=device)
+# drive side per country vocab index (majority vote of that country's images)
+DRIVE_OF_COUNTRY = torch.zeros(N_COUNTRY, dtype=torch.long, device=device)
+_ctry_img = torch.tensor(_cc.map(C2I).to_numpy(dtype=np.int64), device=device)
+for _ci in range(N_COUNTRY):
+    _m = _ctry_img == _ci
+    if _m.any():
+        DRIVE_OF_COUNTRY[_ci] = (_drive_img[_m].float().mean() > 0.5).long()
+
+_lat_np = train_df["latitude"].to_numpy()
+_lon_np = train_df["longitude"].to_numpy()
+_locu, LOC_OF_IMG = np.unique(np.round(np.stack([_lat_np, _lon_np], 1), 6),
+                              axis=0, return_inverse=True)
+N_LOCS = len(_locu)
+_order = np.argsort(LOC_OF_IMG, kind="stable")
+_starts = np.searchsorted(LOC_OF_IMG[_order], np.arange(N_LOCS))
+_ends = np.searchsorted(LOC_OF_IMG[_order], np.arange(N_LOCS), side="right")
+IMGS_OF_LOC = [_order[_starts[i]:_ends[i]] for i in range(N_LOCS)]
+_loc_pts = latlon_to_unit(torch.tensor(_locu[:, 0], dtype=torch.float32, device=device),
+                          torch.tensor(_locu[:, 1], dtype=torch.float32, device=device))
+LOC_CELL = assign_cells(_loc_pts, centroids).cpu().numpy()
+_cd = haversine_km_t(cell_lat.unsqueeze(1), cell_lon.unsqueeze(1),
+                     cell_lat.unsqueeze(0), cell_lon.unsqueeze(0))
+CELL_KM = _cd.cpu().numpy()
+del _cd
+LOCS_OF_CELL = [np.where(LOC_CELL == c)[0] for c in range(N_CELLS)]
+KOP_OF_LOC = KOP_T.cpu().numpy()[np.array([IMGS_OF_LOC[i][0] for i in range(N_LOCS)])]
+LOC_LAT, LOC_LON = _locu[:, 0], _locu[:, 1]
+BY_KOP = {k: np.where(KOP_OF_LOC == k)[0] for k in range(6)}
+p0(f"C5 episode tables: {N_LOCS} locations | Köppen pools "
+   f"{[len(BY_KOP[k]) for k in range(6)]} | EP {EP_E}x{EP_M} tau_geo {EP_TAU_GEO}")
+
+
+def _hav_np(a1, o1, a2, o2):
+    a1, o1, a2, o2 = map(np.radians, (a1, o1, a2, o2))
+    h = np.sin((a2 - a1) / 2) ** 2 + np.cos(a1) * np.cos(a2) * np.sin((o2 - o1) / 2) ** 2
+    return 2 * EARTH_RADIUS_KM * np.arcsin(np.sqrt(np.clip(h, 0, 1)))
+
+
+class EpisodeSampler(torch.utils.data.Sampler):
+    """Batches of EP_E episodes x EP_M members: anchor + graded distance bands + global +
+    climate-matched cross-continent negatives (same Köppen major, >3000 km away)."""
+
+    BANDS = [((0.0, 25.0), 4), ((25.0, 100.0), 3), ((100.0, 500.0), 2)]
+
+    def __init__(self, n_batches, seed):
+        self.n_batches = n_batches
+        self.rng = np.random.default_rng(seed)
+
+    def __len__(self):
+        return self.n_batches
+
+    def _sample_loc_in_band(self, ca, lo, hi):
+        cells = np.where((CELL_KM[ca] >= lo) & (CELL_KM[ca] < hi))[0]
+        for _ in range(4):
+            if len(cells) == 0:
+                break
+            c = int(self.rng.choice(cells))
+            locs = LOCS_OF_CELL[c]
+            if len(locs):
+                return int(self.rng.choice(locs))
+        return int(self.rng.integers(N_LOCS))
+
+    def _img_of(self, loc):
+        return int(self.rng.choice(IMGS_OF_LOC[loc]))
+
+    def __iter__(self):
+        for _ in range(self.n_batches):
+            flat = []
+            for _e in range(EP_E):
+                a = int(self.rng.integers(N_LOCS))
+                ca = int(LOC_CELL[a])
+                members = [self._img_of(a)]
+                if len(IMGS_OF_LOC[a]) > 1:            # second view of the anchor location
+                    members.append(self._img_of(a))
+                for (lo, hi), cnt in self.BANDS:
+                    for _ in range(cnt):
+                        members.append(self._img_of(self._sample_loc_in_band(ca, lo, hi)))
+                # climate-matched cross-continent negatives
+                kop = int(KOP_OF_LOC[a])
+                pool = BY_KOP.get(kop)
+                got = 0
+                for _ in range(10):
+                    if pool is None or len(pool) == 0 or got >= 2:
+                        break
+                    cand = int(self.rng.choice(pool))
+                    if _hav_np(LOC_LAT[a], LOC_LON[a], LOC_LAT[cand], LOC_LON[cand]) > 3000.0:
+                        members.append(self._img_of(cand))
+                        got += 1
+                while len(members) < EP_M:             # fill with global randoms
+                    members.append(self._img_of(int(self.rng.integers(N_LOCS))))
+                flat.extend(members[:EP_M])
+            yield flat
+
+
+def make_episode_loader(epoch):
+    return DataLoader(train_ds, batch_sampler=EpisodeSampler(STEPS_PER_EPOCH,
+                                                             DATA_ORDER_SEED * 7 + epoch * 131 + RANK),
+                      num_workers=NUM_WORKERS, collate_fn=collate, pin_memory=True,
+                      prefetch_factor=4)
+
+with rank0_first():
+    model = GeoModel(centroids, cell_lat, cell_lon, hier,
+                     cell_country=CELL_COUNTRY, n_country=N_COUNTRY, tess_b=TESS_B).to(device)
+model.trunk.to(torch.float32); model.fine_head.to(torch.float32)
+model.coarse_heads.to(torch.float32)
+if model.country_head is not None:
+    model.country_head.to(torch.float32)
+if model.fine_head_b is not None:
+    model.fine_head_b.to(torch.float32)
+model.attr_heads.to(torch.float32)
+
+lora_params = [p for n, p in model.backbone.named_parameters() if p.requires_grad]
+head_params = (list(model.trunk.parameters()) + list(model.fine_head.parameters())
+               + list(model.coarse_heads.parameters())
+               + (list(model.country_head.parameters()) if model.country_head is not None else [])
+               + (list(model.fine_head_b.parameters()) if model.fine_head_b is not None else [])
+               + list(model.attr_heads.parameters()))
+trainable_params = lora_params + head_params
+n_train_params = sum(p.numel() for p in trainable_params)
+p0(f"Trainable params: {n_train_params/1e6:.2f}M (LoRA {sum(p.numel() for p in lora_params)/1e6:.2f}M "
+   f"+ head {sum(p.numel() for p in head_params)/1e6:.2f}M) | LR scale x{LR_SCALE:.2f}")
+
+optimizer = torch.optim.AdamW([
+    {"params": lora_params, "lr": LORA_LR},
+    {"params": head_params, "lr": HEAD_LR},
+], betas=ADAM_BETAS, weight_decay=WEIGHT_DECAY)
+for g in optimizer.param_groups:
+    g["initial_lr"] = g["lr"]
+
+train_ds = GeoDataset("train", IMG_SIZE)
+
+# Rank-synchronized step math: every rank must run the SAME number of steps per epoch or the
+# gradient all-reduce deadlocks; truncate each rank's shard to the common minimum.
+STEPS_PER_EPOCH = (N_TRAIN_IMGS // WORLD) // DEVICE_BATCH_SIZE
+TOTAL_STEPS = EPOCHS * STEPS_PER_EPOCH * 2   # interleaved: CE pass + equal episode batches
+if MAX_STEPS_OVERRIDE:
+    TOTAL_STEPS = min(TOTAL_STEPS, MAX_STEPS_OVERRIDE)
+WARMUP_STEPS = max(300, int(0.02 * TOTAL_STEPS))
+EVAL_EVERY = max(1, EVAL_SAMPLES // GLOBAL_BS)
+CKPT_EVERY = max(1, CKPT_SAMPLES // GLOBAL_BS)
+p0(f"Plan: {EPOCHS} epochs x {STEPS_PER_EPOCH} steps = {TOTAL_STEPS} steps "
+   f"(global batch {GLOBAL_BS}) | warmup {WARMUP_STEPS} | eval every {EVAL_EVERY} | "
+   f"ckpt every {CKPT_EVERY}")
+
+
+def make_loader(epoch, skip_batches):
+    """Deterministic per-epoch permutation -> per-rank shard -> optional resume offset."""
+    g = torch.Generator().manual_seed(DATA_ORDER_SEED + epoch)
+    perm = torch.randperm(N_TRAIN_IMGS, generator=g)
+    mine = perm[RANK::WORLD][:STEPS_PER_EPOCH * DEVICE_BATCH_SIZE]
+    mine = mine[skip_batches * DEVICE_BATCH_SIZE:]
+    sub = Subset(train_ds, mine.tolist())
+    return DataLoader(sub, batch_size=DEVICE_BATCH_SIZE, shuffle=False,
+                      num_workers=NUM_WORKERS, drop_last=True, collate_fn=collate,
+                      pin_memory=True, prefetch_factor=4)
+
+
+def lr_mult(step):
+    if step < WARMUP_STEPS:
+        return (step + 1) / WARMUP_STEPS
+    p = (step - WARMUP_STEPS) / max(1, TOTAL_STEPS - WARMUP_STEPS)
+    cos = 0.5 * (1 + math.cos(math.pi * min(p, 1.0)))
+    return FINAL_LR_FRAC + (1 - FINAL_LR_FRAC) * cos
+
+# ---------------------------------------------------------------------------
+# Eval plumbing (rank 0 only; other ranks wait at a barrier)
+# ---------------------------------------------------------------------------
+
+def make_predict_fn(collect=None):
+    from PIL import Image
+    model.eval()
+
+    def predict_fn(pil_images):
+        arr = np.stack([np.asarray(im.resize((IMG_SIZE, IMG_SIZE), Image.BICUBIC), dtype=np.uint8)
+                        for im in pil_images])
+        x = torch.from_numpy(arr).permute(0, 3, 1, 2)
+        with torch.no_grad(), autocast_ctx:
+            lat, lon = model.predict_latlon(normalize_batch(x), collect=collect)
+        return lat.float().cpu().numpy(), lon.float().cpu().numpy()
+    return predict_fn
+
+
+_, _val_df = load_index("val")
+with torch.no_grad():
+    _vlat = torch.tensor(_val_df["latitude"].to_numpy(), dtype=torch.float32, device=device)
+    _vlon = torch.tensor(_val_df["longitude"].to_numpy(), dtype=torch.float32, device=device)
+    _d = haversine_km_t(_vlat.unsqueeze(1), _vlon.unsqueeze(1),
+                        cell_lat.unsqueeze(0), cell_lon.unsqueeze(0))
+    VAL_TRUE_CELLS = _d.argmin(dim=1).cpu()
+    # Quantization floor: median error IF classification were perfect (top-1 = nearest cell).
+    _floor = float(_d.min(dim=1).values.median())
+    del _d
+p0(f"Val quantization floor @ {N_CELLS} cells: {_floor:.1f} km "
+   f"(median dist to nearest cell centroid)")
+# ---------------------------------------------------------------------------
+# C5 retrieval probe — resolution-verified (ceiling 100% @25km BY CONSTRUCTION)
+# ---------------------------------------------------------------------------
+_prng = np.random.default_rng(1234)
+_pool_locs = _prng.choice(N_LOCS, size=min(PROBE_POOL_LOCS, N_LOCS), replace=False)
+_pool_set = set(_pool_locs.tolist())
+_pl = LOC_LAT[_pool_locs]; _po = LOC_LON[_pool_locs]
+_cand_q = _prng.permutation(N_LOCS)
+PROBE_Q, PROBE_Q_NN = [], []
+for _l in _cand_q:
+    if int(_l) in _pool_set or len(PROBE_Q) >= PROBE_QUERIES:
+        if len(PROBE_Q) >= PROBE_QUERIES:
+            break
+        continue
+    _d = _hav_np(LOC_LAT[_l], LOC_LON[_l], _pl, _po)
+    if _d.min() <= 25.0:
+        PROBE_Q.append(int(_l)); PROBE_Q_NN.append(float(_d.min()))
+PROBE_Q = np.array(PROBE_Q)
+_pool_imgs = np.array([IMGS_OF_LOC[l][k] for l in _pool_locs
+                       for k in range(min(2, len(IMGS_OF_LOC[l])))])
+_pool_of_img = np.array([j for j, l in enumerate(_pool_locs)
+                         for _ in range(min(2, len(IMGS_OF_LOC[l])))])
+_q_imgs = np.array([IMGS_OF_LOC[l][0] for l in PROBE_Q])
+_pd = _hav_np(LOC_LAT[PROBE_Q][:, None], LOC_LON[PROBE_Q][:, None],
+              _pl[_pool_of_img][None, :], _po[_pool_of_img][None, :])
+PROBE_OK25 = torch.tensor(_pd <= 25.0)
+PROBE_OK10 = torch.tensor(_pd <= 10.0)
+_ceil25 = float(PROBE_OK25.any(1).float().mean())
+p0(f"Probe: {len(PROBE_Q)} queries x {len(_pool_imgs)} pool imgs | ceiling @25km "
+   f"{100*_ceil25:.0f}% (must be ~100), @10km {100*float(PROBE_OK10.any(1).float().mean()):.0f}%")
+assert _ceil25 > 0.99, "probe has no resolution — refuse to run blind (C3/C4 lesson)"
+_PROBE_CACHE = {}
+
+
+def run_probe(step):
+    r25 = r10 = 0.0
+    if is_main:
+        t0p = time.time()
+        model.eval()
+        if "pool" not in _PROBE_CACHE:
+            from PIL import Image
+            def _load(rows):
+                out = torch.empty(len(rows), 3, IMG_SIZE, IMG_SIZE, dtype=torch.uint8)
+                for j, r in enumerate(rows):
+                    im = open_image(train_ds.img_dir, train_ds.paths[r])
+                    if im.size != (IMG_SIZE, IMG_SIZE):
+                        im = im.resize((IMG_SIZE, IMG_SIZE), Image.BICUBIC)
+                    out[j] = torch.from_numpy(np.asarray(im, np.uint8)).permute(2, 0, 1)
+                return out
+            _PROBE_CACHE["pool"] = _load(_pool_imgs)
+            _PROBE_CACHE["q"] = _load(_q_imgs)
+            p0(f"[probe] image cache built ({time.time()-t0p:.0f}s)")
+        def _embed(t):
+            zs = []
+            with torch.no_grad(), autocast_ctx:
+                for i in range(0, len(t), 96):
+                    zs.append(F.normalize(model.features(
+                        normalize_batch(t[i:i + 96])).float(), dim=-1))
+            return torch.cat(zs)
+        zq = _embed(_PROBE_CACHE["q"]); zp = _embed(_PROBE_CACHE["pool"])
+        best = (zq @ zp.T).argmax(1).cpu()
+        ar_ = torch.arange(len(_q_imgs))
+        r25 = float(PROBE_OK25[ar_, best].float().mean())
+        r10 = float(PROBE_OK10[ar_, best].float().mean())
+        print(f"\n[probe @ {step}] near-recall@1: @25km {100*r25:.1f}% | @10km {100*r10:.1f}% "
+              f"({time.time()-t0p:.0f}s)", flush=True)
+        if wandb_run is not None:
+            wandb.log({"probe/near_recall25": r25, "probe/near_recall10": r10}, step=step)
+        model.train()
+    if DIST:
+        dist.barrier()
+    return r25
+
+
+VAL_TRUE_COUNTRY = torch.tensor(_val_df["country_code"].fillna("??").astype(str)
+                                .map(lambda c: C2I.get(c, -1)).to_numpy(dtype=np.int64))
+CELL_COUNTRY_CPU = CELL_COUNTRY.cpu()
+VAL_LAT_CPU, VAL_LON_CPU = _vlat.cpu(), _vlon.cpu()
+CELL_LAT_CPU, CELL_LON_CPU = cell_lat.cpu(), cell_lon.cpu()
+
+
+def val_cell_metrics(collected):
+    if not collected:
+        return {}
+    topc = torch.cat(collected)                            # (n, 50), eval row order
+    true = VAL_TRUE_CELLS[:topc.size(0)]
+    out = {f"cell_top{K}": (topc[:, :K] == true.unsqueeze(1)).any(dim=1).float().mean().item()
+           for K in (1, 5, 10, 25, 50)}
+    out["country_acc"] = (CELL_COUNTRY_CPU[topc[:, 0]]
+                          == VAL_TRUE_COUNTRY[:topc.size(0)]).float().mean().item()
+    out["cell_top1_lift"] = out["cell_top1"] * N_CELLS
+    out["cell_top5_lift"] = out["cell_top5"] * N_CELLS / 5
+    # Retrieval-readiness: truth within 100 km of ANY top-K cell centroid. Unlike exact-cell
+    # topK this stays comparable when N_CELLS changes.
+    d = haversine_km_t(VAL_LAT_CPU[:topc.size(0)].unsqueeze(1),
+                       VAL_LON_CPU[:topc.size(0)].unsqueeze(1),
+                       CELL_LAT_CPU[topc], CELL_LON_CPU[topc])
+    out["region_recall_top10_100km"] = (d[:, :10].min(dim=1).values <= 100).float().mean().item()
+    out["region_recall_top50_100km"] = (d.min(dim=1).values <= 100).float().mean().item()
+    return out
+
+
+def quick_eval(tag, step):
+    m = None
+    if is_main:
+        coll = []
+        pf = make_predict_fn(collect=coll)
+        m = evaluate_geo(pf, split="val", subset=QUICK_VAL_N, batch_size=DEVICE_BATCH_SIZE)
+        cm = val_cell_metrics(coll)
+        print(f"\n[{tag}] median_km={m['median_km']:.1f} mean_km={m['mean_km']:.1f} "
+              f"acc@25km={m['acc_25km']*100:.1f}% acc@200km={m['acc_200km']*100:.1f}% "
+              f"acc@2500km={m['acc_2500km']*100:.1f}% geoguessr={m['geoguessr_score']:.0f} "
+              f"cell_top1={cm.get('cell_top1', 0)*100:.1f}% "
+              f"top10={cm.get('cell_top10', 0)*100:.1f}% top50={cm.get('cell_top50', 0)*100:.1f}% "
+              f"rr10@100={cm.get('region_recall_top10_100km', 0)*100:.1f}% "
+              f"country={cm.get('country_acc', 0)*100:.1f}%", flush=True)
+        if wandb_run is not None:
+            wandb.log({f"val/{k}": v for k, v in {**m, **cm}.items()}, step=step)
+    model.train()
+    if DIST:
+        dist.barrier()
+    return m
+
+# ---------------------------------------------------------------------------
+# Checkpointing (rank 0 writes; every rank can load)
+# ---------------------------------------------------------------------------
+
+os.makedirs(RUN_DIR, exist_ok=True)
+_upload_lock = threading.Lock()
+
+
+def _hf_upload(path, tag):
+    """Best-effort background upload of a checkpoint to a private HF repo."""
+    if not CKPT_HF_REPO:
+        return
+
+    def _up():
+        if not _upload_lock.acquire(blocking=False):
+            return          # previous upload still running; skip this one
+        try:
+            from huggingface_hub import HfApi
+            api = HfApi()
+            api.create_repo(CKPT_HF_REPO, repo_type="model", private=True, exist_ok=True)
+            api.upload_file(path_or_fileobj=path, path_in_repo=f"c5/ckpt_{tag}.pt",
+                            repo_id=CKPT_HF_REPO, repo_type="model")
+            print(f"\n[ckpt] uploaded ckpt_{tag}.pt -> {CKPT_HF_REPO}", flush=True)
+        except Exception as e:
+            print(f"\n[ckpt] HF upload failed ({type(e).__name__}: {e}) — continuing", flush=True)
+        finally:
+            _upload_lock.release()
+    threading.Thread(target=_up, daemon=True).start()
+
+
+def save_ckpt(tag, step, epoch, batches_in_epoch, best_median):
+    if not is_main:
+        return
+    t0 = time.time()
+    ck = {
+        "step": step, "epoch": epoch, "batches_in_epoch": batches_in_epoch,
+        "best_median": best_median,
+        "trainable": {n: p.detach().cpu() for n, p in model.named_parameters() if p.requires_grad},
+        "buffers": {n: b.detach().cpu() for n, b in model.named_buffers()},
+        "optimizer": optimizer.state_dict(),
+        "country_lat": COUNTRY_LAT.cpu(), "country_lon": COUNTRY_LON.cpu(),
+        "countries": COUNTRIES,
+        "wandb_id": WANDB_ID,
+        "config": {"n_cells": N_CELLS, "hier": HIER_CELLS, "epochs": EPOCHS,
+                   "world": WORLD, "bs": DEVICE_BATCH_SIZE, "img": IMG_SIZE,
+                   "model": MODEL_NAME, "lora_r": LORA_R, "n_train": N_TRAIN_IMGS,
+                   "stagger": STAGGER, "cc_cells": CC_CELLS, "msl_w": MSL_W, "aug": AUG,
+                   "c5": True, "lora_targets": LORA_TARGETS, "ep_w": EP_W,
+                   "ep_tau_geo": EP_TAU_GEO, "attr_w": ATTR_W, "kop_classes": KOP_CLASSES},
+    }
+    path = os.path.join(RUN_DIR, f"ckpt_{tag}.pt")
+    tmp = path + ".tmp"
+    torch.save(ck, tmp)
+    os.replace(tmp, path)
+    print(f"\n[ckpt] saved {tag} @ step {step} ({time.time()-t0:.1f}s)", flush=True)
+    _hf_upload(path, tag)
+
+
+def try_resume():
+    """Returns (step, epoch, batches_in_epoch, best_median, wandb_id) or zeros."""
+    spec = os.environ.get("AR_RESUME", "auto")
+    if spec == "none":
+        return 0, 0, 0, float("inf"), None
+    path = spec if spec not in ("auto", "") else os.path.join(RUN_DIR, "ckpt_last.pt")
+    if not os.path.exists(path):
+        best_p = os.path.join(RUN_DIR, "ckpt_best.pt")
+        if spec in ("auto", "") and os.path.exists(best_p):
+            path = best_p
+        else:
+            return 0, 0, 0, float("inf"), None
+    ck = torch.load(path, map_location="cpu")
+    cfg = ck["config"]
+    assert (cfg.get("stagger", False) == STAGGER and cfg.get("cc_cells", False) == CC_CELLS), \
+        f"checkpoint stagger/cc_cells mismatch: {cfg} vs stagger={STAGGER} cc={CC_CELLS}"
+    assert cfg["n_cells"] == N_CELLS and cfg["world"] == WORLD and cfg["bs"] == DEVICE_BATCH_SIZE, \
+        f"checkpoint config mismatch: {cfg} vs cells={N_CELLS} world={WORLD} bs={DEVICE_BATCH_SIZE}"
+    assert ck["countries"] == COUNTRIES, "country vocabulary changed between runs"
+    with torch.no_grad():
+        bufs = dict(model.named_buffers())
+        for n, b in ck["buffers"].items():
+            bufs[n].copy_(b.to(device))
+        params = dict(model.named_parameters())
+        for n, t in ck["trainable"].items():
+            params[n].data.copy_(t.to(device))
+        COUNTRY_LAT.copy_(ck["country_lat"].to(device))
+        COUNTRY_LON.copy_(ck["country_lon"].to(device))
+    optimizer.load_state_dict(ck["optimizer"])
+    p0(f"RESUMED from {path}: step {ck['step']}, epoch {ck['epoch']}, "
+       f"batch {ck['batches_in_epoch']}, best {ck['best_median']:.1f}")
+    return ck["step"], ck["epoch"], ck["batches_in_epoch"], ck["best_median"], ck.get("wandb_id")
+
+
+start_step, start_epoch, start_batches, best_median, _resume_wandb = try_resume()
+
+if DIST:   # identical weights/buffers everywhere (same seed + same cache, but be certain)
+    for t in trainable_params:
+        dist.broadcast(t.data, src=0)
+    for b in model.buffers():
+        dist.broadcast(b, src=0)
+
+# ---------------------------------------------------------------------------
+# W&B (rank 0; resumed runs continue the same W&B run at the right step)
+# ---------------------------------------------------------------------------
+
+WANDB_ID = None
+wandb_run = None
+if is_main:
+    try:
+        import wandb
+        _cfg = {k: v for k, v in globals().items()
+                if k.isupper() and isinstance(v, (int, float, str, bool, tuple, list))}
+        _cfg["n_train_params_M"] = round(n_train_params / 1e6, 2)
+        WANDB_ID = (_resume_wandb or os.environ.get("AR_RUN_NAME")
+                    or (f"c5-bed-{N_CELLS}c-{EPOCHS}ep-w{WORLD}"
+                        + ("-msl" if MSL_W > 0 else "") + ("-stag" if STAGGER else "")
+                        + ("-cc" if CC_CELLS else "") + ("-aug" if AUG else "")))
+        WANDB_ID = re.sub(r"[^a-zA-Z0-9_-]", "-", WANDB_ID)
+        wandb_mode = "online" if os.environ.get("WANDB_API_KEY") else "disabled"
+        wandb_run = wandb.init(project=WANDB_PROJECT, config=_cfg, mode=wandb_mode,
+                               id=WANDB_ID, name=WANDB_ID, resume="allow")
+        print(f"W&B: {wandb_mode} (project={WANDB_PROJECT}, id={WANDB_ID})")
+    except Exception as e:
+        print(f"W&B init failed ({e}); continuing without tracking")
+        wandb, wandb_run = None, None
+
+# ---------------------------------------------------------------------------
+# Compile + warmup (once, before the loop; eval shapes included)
+# ---------------------------------------------------------------------------
+
+model.train()
+model.encode = torch.compile(model.encode, dynamic=True)
+p0("compile warmup…")
+_t_c = time.time()
+_wb = collate([train_ds[i] for i in range(DEVICE_BATCH_SIZE)])
+_x = normalize_batch(_wb[0])
+with autocast_ctx:
+    _feats = model.features(_x)
+_logits, _, _, _fb = model.head_logits(_feats.float())
+(_logits.mean() + (_fb.mean() if _fb is not None else 0.0)).backward()
+optimizer.zero_grad(set_to_none=True)
+model.eval()
+with torch.no_grad(), autocast_ctx:
+    model.features(_x[:16]); model.features(_x[:7])
+model.train()
+del _wb, _x, _feats, _logits
+p0(f"compile warmup done in {time.time()-_t_c:.0f}s")
+
+if start_step == 0:
+    quick_eval("step 0", 0)
+    run_probe(0)
+
+# ---------------------------------------------------------------------------
+# Training loop
+# ---------------------------------------------------------------------------
+
+_prepare.TIME_BUDGET = WALL_BACKSTOP_S   # SIGALRM backstop only; the step count is the plan
+start_training_clock()
+step = start_step
+smooth_loss = 0.0
+t_train0 = time.time()
+_win_t0, _win_step0 = time.time(), step
+
+try:
+    for epoch in range(start_epoch, EPOCHS):
+        if step >= TOTAL_STEPS:
+            break
+        in_epoch = start_batches if epoch == start_epoch else 0
+        loader = make_loader(epoch, in_epoch)
+        ep_loader = make_episode_loader(epoch)
+
+        def _interleave(a, b):
+            ita, itb = iter(a), iter(b)
+            while True:
+                try:
+                    yield next(ita), False
+                    yield next(itb), True
+                except StopIteration:
+                    return
+
+        for (imgs, blat, blon, bctry, bidx), IS_EP in _interleave(loader, ep_loader):
+            optimizer.zero_grad(set_to_none=True)
+            x = normalize_batch(imgs)
+            blat = blat.to(device); blon = blon.to(device); bctry = bctry.to(device)
+            bidx = bidx.to(device)
+            with autocast_ctx:
+                feats = model.features(x)
+            logits, coarse_logits, country_logits, fine_b = model.head_logits(feats.float())
+            tgt = soft_targets(blat, blon, cell_lat, cell_lon, SMOOTH_TAU_KM)
+            logp = F.log_softmax(logits, dim=-1)
+            loss = -(tgt * logp).sum(dim=-1).mean()
+            if fine_b is not None:
+                tgt_b = soft_targets(blat, blon, TESS_B[1], TESS_B[2], SMOOTH_TAU_KM)
+                loss = loss + -(tgt_b * F.log_softmax(fine_b, dim=-1)).sum(dim=-1).mean()
+            for l, cl in enumerate(coarse_logits):
+                tgt_l = soft_targets(blat, blon, getattr(model, f"coarse_lat_{l}"),
+                                     getattr(model, f"coarse_lon_{l}"), SMOOTH_TAU_KM)
+                loss = loss + HIER_LOSS_W[l] * -(tgt_l * F.log_softmax(cl, dim=-1)).sum(dim=-1).mean()
+            if country_logits is not None:
+                tgt_c = soft_targets(blat, blon, COUNTRY_LAT, COUNTRY_LON, COUNTRY_TAU_KM)
+                loss = loss + COUNTRY_LOSS_W * -(tgt_c * F.log_softmax(country_logits, dim=-1)).sum(dim=-1).mean()
+            parts = {"ce": float(loss.item())}
+            if MSL_W > 0:
+                # MSL: differentiable spherical-mean prediction, redescending km loss
+                p_msl = F.softmax(logits / MSL_TEMP, dim=-1)
+                v_msl = p_msl @ model.centroids
+                v_msl = v_msl / v_msl.norm(dim=-1, keepdim=True).clamp(min=1e-6)
+                u_true = latlon_to_unit(blat, blon)
+                cosang = (v_msl * u_true).sum(dim=-1).clamp(-1 + 1e-7, 1 - 1e-7)
+                d_msl = EARTH_RADIUS_KM * torch.acos(cosang)
+                gm = d_msl.pow(2) / (d_msl.pow(2) + MSL_S_KM ** 2)
+                loss = loss + MSL_W * gm.mean()
+                parts["msl"] = float(gm.mean().item())
+            # C5: graded listwise episode loss (episode batches only)
+            if IS_EP:
+                fe = F.normalize(feats.float(), dim=-1).view(EP_E, EP_M, -1)
+                el = blat.view(EP_E, EP_M); eo = blon.view(EP_E, EP_M)
+                dkm = haversine_km_t(el.unsqueeze(2), eo.unsqueeze(2),
+                                     el.unsqueeze(1), eo.unsqueeze(1))
+                tgt_e = torch.exp(-dkm / EP_TAU_GEO)
+                eye = torch.eye(EP_M, device=device, dtype=torch.bool).unsqueeze(0)
+                tgt_e = tgt_e.masked_fill(eye, 0.0)
+                tgt_e = tgt_e / tgt_e.sum(-1, keepdim=True).clamp(min=1e-9)
+                sims_e = (fe @ fe.transpose(1, 2)) / EP_TAU
+                sims_e = sims_e.masked_fill(eye, -1e4)
+                loss_ep = -(tgt_e * F.log_softmax(sims_e, dim=-1)).sum(-1).mean()
+                ep_floor = -(tgt_e * tgt_e.clamp(min=1e-12).log()).sum(-1).mean()
+                epw = EP_W * min(1.0, (step + 1) / max(1, EP_RAMP))
+                loss = loss + epw * loss_ep
+                parts["ep"] = float(loss_ep.item())
+                parts["ep_kl"] = float((loss_ep - ep_floor).item())
+            # C5: attribute CE (every batch; labels are free)
+            h_attr = model.trunk(feats.float())
+            att = model.attr_heads
+            la_drive = DRIVE_OF_COUNTRY[bctry]
+            loss_attr = (F.cross_entropy(att["drive"](h_attr), la_drive)
+                         + F.cross_entropy(att["kop"](h_attr), KOP_T[bidx])
+                         + F.cross_entropy(att["band"](h_attr), BAND_T[bidx])) / 3
+            loss = loss + ATTR_W * loss_attr
+            parts["attr"] = float(loss_attr.item())
+            loss.backward()
+            loss_val = loss.item()
+
+            if DIST:
+                for p in trainable_params:
+                    if p.grad is not None:
+                        dist.all_reduce(p.grad, op=dist.ReduceOp.AVG)
+
+            lrm = lr_mult(step)
+            for g in optimizer.param_groups:
+                g["lr"] = g["initial_lr"] * lrm
+            optimizer.step()
+
+            if math.isnan(loss_val) or loss_val > 1e4:
+                p0("FAIL: loss diverged"); raise SystemExit(1)
+
+            step += 1
+            in_epoch += 1
+            beta = 0.9
+            smooth_loss = beta * smooth_loss + (1 - beta) * loss_val
+            deb = smooth_loss / (1 - beta ** (step - start_step))
+
+            if is_main and step % 20 == 0:
+                dt_win = time.time() - _win_t0
+                ips = (step - _win_step0) * GLOBAL_BS / max(1e-9, dt_win)
+                eta_h = (TOTAL_STEPS - step) / max(1e-9, (step - _win_step0) / dt_win) / 3600
+                print(f"step {step}/{TOTAL_STEPS} ({100*step/TOTAL_STEPS:.1f}%) | "
+                      f"loss {deb:.4f} | lrm {lrm:.2f} | {ips:.0f} img/s | "
+                      f"ep {epoch+1}/{EPOCHS} | eta {eta_h:.2f}h", flush=True)
+                _win_t0, _win_step0 = time.time(), step
+                if wandb_run is not None:
+                    with torch.no_grad():
+                        gn = torch.norm(torch.stack([p.grad.norm() for p in trainable_params
+                                                     if p.grad is not None])).item()
+                        acc_d = (att["drive"](h_attr).argmax(1) == la_drive).float().mean().item()
+                        acc_k = (att["kop"](h_attr).argmax(1) == KOP_T[bidx]).float().mean().item()
+                    wandb.log({"train/loss": deb, "train/lr_mult": lrm, "train/img_per_s": ips,
+                               "train/progress": step / TOTAL_STEPS, "epoch": epoch + 1,
+                               "train/samples_seen": step * GLOBAL_BS,
+                               "train/grad_norm": gn, "train/is_episode": float(IS_EP),
+                               "attr/acc_drive": acc_d, "attr/acc_koppen": acc_k,
+                               **{f"loss/{k}": v for k, v in parts.items()},
+                               "train/vram_gb": torch.cuda.max_memory_allocated() / 2**30},
+                              step=step)
+
+            if step % PROBE_EVERY == 0 or step == TOTAL_STEPS:
+                run_probe(step)
+            if step % EVAL_EVERY == 0 or step == TOTAL_STEPS:
+                m = quick_eval(f"step {step}", step)
+                if is_main and m is not None and m["median_km"] < best_median:
+                    best_median = m["median_km"]
+                    save_ckpt("best", step, epoch, in_epoch, best_median)
+            if step % CKPT_EVERY == 0:
+                save_ckpt("last", step, epoch, in_epoch, best_median)
+                if DIST:
+                    dist.barrier()
+
+            if step >= TOTAL_STEPS:
+                break
+        start_batches = 0
+except TrainingTimeUp:
+    p0("\n[hard-deadline] wall backstop reached — stopping for final eval")
+finally:
+    stop_training_clock()
+
+total_training_time = time.time() - t_train0
+p0("")
+
+# ---------------------------------------------------------------------------
+# Final eval on the FULL val split (official score) + final checkpoint
+# ---------------------------------------------------------------------------
+
+save_ckpt("final", step, EPOCHS - 1, 0, best_median)
+
+if is_main:
+    model.eval()
+    final_coll = []
+    predict_fn = make_predict_fn(collect=final_coll)
+    with autocast_ctx:
+        m = evaluate_geo(predict_fn, split="val", subset=None, batch_size=DEVICE_BATCH_SIZE)
+    final_cm = val_cell_metrics(final_coll)
+
+    peak_vram_mb = torch.cuda.max_memory_allocated() / 1024 / 1024
+    t_end = time.time()
+
+    print("---")
+    print(f"median_km:        {m['median_km']:.6f}")
+    print(f"mean_km:          {m['mean_km']:.6f}")
+    print(f"acc_1km:          {m['acc_1km']:.6f}")
+    print(f"acc_25km:         {m['acc_25km']:.6f}")
+    print(f"acc_200km:        {m['acc_200km']:.6f}")
+    print(f"acc_750km:        {m['acc_750km']:.6f}")
+    print(f"acc_2500km:       {m['acc_2500km']:.6f}")
+    print(f"geoguessr_score:  {m['geoguessr_score']:.6f}")
+    print(f"peak_vram_mb:     {peak_vram_mb:.1f}")
+    print(f"training_seconds: {total_training_time:.1f}")
+    print(f"total_seconds:    {t_end - t_start:.1f}")
+    print(f"num_steps:        {step}")
+    print(f"best_val_median:  {best_median:.6f}")
+    print(f"num_params_M:     {n_train_params/1e6:.2f}")
+    for k, v in final_cm.items():
+        print(f"{k}: {v:.6f}")
+
+    if wandb_run is not None:
+        wandb.log({f"final/{k}": v for k, v in {**m, **final_cm}.items()}, step=step)
+        wandb.summary.update({f"final_{k}": v for k, v in {**m, **final_cm}.items()})
+        wandb.summary.update({"num_steps": step, "peak_vram_mb": peak_vram_mb,
+                              "best_val_median": best_median})
+        wandb.finish()
+
+if DIST:
+    dist.barrier()
+    dist.destroy_process_group()
