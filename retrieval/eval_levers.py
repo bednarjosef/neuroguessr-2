@@ -126,12 +126,11 @@ def main():
     base_tr = norm_big(cat(d, f"c2_cls_train_{a.tag}_r"))
     base_va = F.normalize(torch.from_numpy(cat(d, f"c2_cls_val_{a.tag}_r")).float().to(device), dim=-1)
     spaces["cls"] = (base_tr, base_va)
-    for nm, f in (("geo5c", "geo5_cls_c3.pt"), ("geo10c", "geo10_cls_c3.pt"),
-                  ("geo25c", "geo25_cls_c3.pt"), ("geo50c", "geo50_cls_c3.pt")):
+    heads = sorted(f for f in os.listdir(d)
+                   if f.startswith("geo") and f.endswith("_cls_c3.pt"))
+    for f in heads:
+        nm = f.replace("_cls_c3.pt", "") + "c"          # geo10_cls_c3.pt -> geo10c
         pth = os.path.join(d, f)
-        if not os.path.exists(pth):
-            print(f"(missing {f})", flush=True)
-            continue
         ck = torch.load(pth, map_location="cpu", weights_only=False)
         head = PlaceHead(ck["dim"], ck["hidden"]).to(device).eval()
         head.load_state_dict(ck["state_dict"])
