@@ -164,7 +164,7 @@ def main():
 
     ck = torch.load(a.ckpt, map_location="cpu", weights_only=False)
     model = GeoModelEval(ck)
-    model.load_from_ckpt(ck)
+    model.load_from_ckpt(ck, strict=False)   # C5 ckpts carry attr_heads the eval model lacks
     model.to(device).eval()
     n_cells = int(ck["config"]["n_cells"])
     if RANK == 0:
