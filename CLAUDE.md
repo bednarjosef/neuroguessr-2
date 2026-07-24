@@ -128,3 +128,21 @@ before proposing another GPU training run.**
 **TODO carried forward:** the 5/25/50 km band heads and the regional descriptors from the C3
 index were lost with that box. They retrain in ~15 min from `c3/c2_cls_train_c3_r*.npy` on HF —
 fold this into the next session rather than renting a box for it alone.
+
+## Screen the box BEFORE any long run (learned 2026-07-24, cost ~$5 + a whole eval)
+
+A rented box can pass the rent-time filters (dlperf, GPU count) and still be a dud at RUN time —
+throttled clocks, or a torchrun job silently running on one GPU. **Before committing to any
+multi-hour run, screen it:**
+
+1. `nvidia-smi --query-gpu=index,utilization.gpu,clocks.sm,clocks.max.sm,power.draw --format=csv,noheader`
+   — every GPU's `clocks.sm` must be near `clocks.max.sm` (e.g. ~2800-3100 MHz on a 5090, NOT
+   ~550 MHz). A GPU pinned far below max clock is throttled → destroy and re-race.
+2. Run a ~30-step throughput smoke and confirm **img/s matches the historical baseline**
+   (4×5090 train ≈ 200-260 img/s; embed_c2 re-index ≈ 900 img/s total) AND that a multi-GPU job
+   shows **load on ALL GPUs**, not just GPU 0.
+
+What went wrong: a Bulgaria 4×5090 trained C4 at 33 img/s (vs 260 elsewhere) and re-indexed at
+23 img/s on GPU 0 only (1-3 idle, GPU 0 at 547/3090 MHz). ~$5 went into training at ~1/7 speed
+and credit ran out before the eval — a completed training produced NO usable number. A 30-second
+clock check would have caught it.
