@@ -1,0 +1,72 @@
+=== STAGE A: single spaces (mass .95, lam .05, k1 snap) ===
+cls                                          median   48.05  mean    396  @1 12.11%  @25 42.46%  @200 73.15%  GG  4421
+geo10c                                       median   49.08  mean    388  @1 10.27%  @25 41.23%  @200 73.12%  GG  4422
+geo10cls512                                  median   52.04  mean    376  @1  9.77%  @25 39.79%  @200 73.78%  GG  4429
+geo10m                                       median   56.61  mean    417  @1 10.31%  @25 39.16%  @200 72.35%  GG  4402
+geo10mean512                                 median   57.58  mean    419  @1  9.57%  @25 38.33%  @200 72.21%  GG  4390
+cls_s512                                     median   65.06  mean    421  @1 10.07%  @25 36.32%  @200 72.68%  GG  4390
+mean                                         median   70.63  mean    434  @1  9.67%  @25 35.72%  @200 71.25%  GG  4366
+c3head                                       median   72.67  mean    424  @1  9.04%  @25 33.89%  @200 70.55%  GG  4363
+mean_s512                                    median   80.70  mean    436  @1  8.37%  @25 32.99%  @200 69.98%  GG  4345
+best single: cls | top3 ['cls', 'geo10c', 'geo10cls512']
+
+=== STAGE B: 50/50 similarity blends ===
+cls|geo10c                                   median   42.12  mean    388  @1 12.17%  @25 44.20%  @200 73.98%  GG  4441
+cls|geo10cls512                              median   42.66  mean    376  @1 11.94%  @25 43.83%  @200 74.55%  GG  4447
+cls|geo10m                                   median   46.38  mean    395  @1 12.24%  @25 42.60%  @200 73.45%  GG  4425
+geo10c|geo10mean512                          median   45.77  mean    385  @1 10.67%  @25 42.56%  @200 74.12%  GG  4435
+cls|geo10mean512                             median   46.09  mean    399  @1 11.71%  @25 42.49%  @200 73.78%  GG  4421
+geo10cls512|geo10m                           median   45.14  mean    386  @1 11.17%  @25 42.46%  @200 73.68%  GG  4433
+geo10cls512|geo10mean512                     median   44.07  mean    373  @1 10.44%  @25 42.39%  @200 74.02%  GG  4439
+geo10c|geo10cls512                           median   46.74  mean    389  @1 10.54%  @25 42.16%  @200 73.65%  GG  4431
+geo10c|mean                                  median   50.63  mean    397  @1 10.94%  @25 41.89%  @200 73.32%  GG  4420
+cls_s512|geo10c                              median   48.36  mean    370  @1 11.54%  @25 41.86%  @200 73.55%  GG  4436
+geo10c|geo10m                                median   48.36  mean    392  @1 10.91%  @25 41.76%  @200 73.25%  GG  4418
+geo10cls512|mean                             median   47.24  mean    395  @1 10.47%  @25 41.49%  @200 73.62%  GG  4419
+cls|mean                                     median   52.03  mean    397  @1 11.71%  @25 41.46%  @200 72.68%  GG  4416
+geo10c|mean_s512                             median   52.21  mean    402  @1 10.47%  @25 41.03%  @200 73.35%  GG  4418
+c3head|cls                                   median   51.54  mean    399  @1 11.67%  @25 40.99%  @200 72.45%  GG  4415
+cls|cls_s512                                 median   51.75  mean    403  @1 11.41%  @25 40.96%  @200 73.58%  GG  4415
+cls|mean_s512                                median   54.42  mean    405  @1 11.57%  @25 40.83%  @200 72.78%  GG  4407
+cls_s512|geo10cls512                         median   51.00  mean    388  @1 10.97%  @25 40.56%  @200 73.82%  GG  4426
+c3head|geo10cls512                           median   51.83  mean    387  @1 10.61%  @25 40.33%  @200 73.92%  GG  4423
+c3head|geo10c                                median   53.04  mean    411  @1 10.47%  @25 40.26%  @200 72.38%  GG  4405
+geo10cls512|mean_s512                        median   51.64  mean    397  @1 10.11%  @25 40.26%  @200 73.15%  GG  4416
+best after blends: cls|geo10c
+
+=== STAGE D: regional rerank on [cls|geo10c] ===
+cls|geo10c rr:R50a0.25                       median   40.97  mean    378  @1 12.61%  @25 44.33%  @200 73.85%  GG  4443
+cls|geo10c rr:R200a0.25                      median   40.97  mean    378  @1 12.61%  @25 44.33%  @200 73.85%  GG  4443
+cls|geo10c rr:R50a0.5                        median   41.12  mean    373  @1 12.51%  @25 44.06%  @200 73.45%  GG  4434
+cls|geo10c rr:R200a0.5                       median   41.12  mean    373  @1 12.51%  @25 44.06%  @200 73.42%  GG  4433
+cls|geo10c rr:R50a1.0                        median   47.64  mean    384  @1 12.21%  @25 43.06%  @200 72.65%  GG  4414
+cls|geo10c rr:R200a1.0                       median   48.13  mean    387  @1 12.21%  @25 42.90%  @200 72.45%  GG  4412
+best after D: cls|geo10c rr:R50a0.25
+
+=== CHAMPION: cls|geo10c rr:R50a0.25 (full val, n=2998) ===
+config: {'cfg': {'cls': 0.5, 'geo10c': 0.5}, 'mass': 0.95, 'lam': 0.05, 'tta': None, 'rerank': (50, 0.25)}
+median 40.97 km | mean 377.5 km
+  @   0.1 km :  2.97%
+  @   0.5 km :  8.44%
+  @     1 km : 12.61%
+  @     5 km : 26.38%
+  @    10 km : 34.26%
+  @    25 km : 44.33%
+  @    50 km : 52.64%
+  @   100 km : 61.84%
+  @   200 km : 73.85%
+  @   500 km : 88.63%
+  @   750 km : 92.46%
+  @  1000 km : 94.46%
+  @  2500 km : 97.50%
+  p10  :       0.7 km
+  p25  :       4.3 km
+  p50  :      41.0 km
+  p75  :     211.4 km
+  p90  :     581.5 km
+  p95  :    1127.2 km
+  p99  :    8343.1 km
+GeoGuessr: mean/round 4443 | median round 4865 | 5-round 22214 | >=4500 69.5% | >=4900 46.3%
+(best-by-median config: cls|geo10c rr:R50a0.25 -> 40.97 km, @25 44.33%)
+GRID DONE (2.4 min)
+GRID1_DONE

@@ -53,7 +53,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--index", default="retrieval_index")
     ap.add_argument("--ckpt", default="run_full2/ckpt_best.pt")
-    ap.add_argument("--gate", default="384", help="tag of the val logits used to gate")
+    ap.add_argument("--gate", default="s384", help="tag of the val logits used to gate")
     ap.add_argument("--stages", default="ABCDF")
     ap.add_argument("--cap", type=int, default=400)
     ap.add_argument("--tag", default="s512", help="descriptor tag to load (s512 | s384)")
@@ -75,7 +75,7 @@ def main():
     trlon_t = torch.tensor(trlon, device=device)
 
     # ---- gate: classifier posterior over cells + cell buckets over the index
-    lg = cat(d, f"c2_logits_val_s{a.gate}_r")
+    lg = cat(d, f"c2_logits_val_{a.gate}_r")
     p = F.softmax(torch.tensor(lg, dtype=torch.float32, device=device), dim=-1)
     logp = p.clamp(1e-12).log()
     rank_order = torch.argsort(p, dim=1, descending=True)
@@ -101,7 +101,7 @@ def main():
     cs = cell_a[order]
     ar = torch.arange(C, device=device)
     starts, ends = torch.searchsorted(cs, ar), torch.searchsorted(cs, ar, right=True)
-    print(f"gate=s{a.gate} | N={N} val={n} cells={C} ({time.time()-T0:.0f}s)", flush=True)
+    print(f"gate={a.gate} | N={N} val={n} cells={C} ({time.time()-T0:.0f}s)", flush=True)
 
     # ---- embedding spaces (train fp16 on GPU, val fp32) + query-TTA variants
     spaces, valvars = {}, {}
