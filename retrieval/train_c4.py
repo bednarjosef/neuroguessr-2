@@ -103,6 +103,7 @@ def main():
     ap.add_argument("--workers", type=int, default=12)
     ap.add_argument("--probe-every", type=int, default=500)
     ap.add_argument("--kill-step", type=int, default=3000)  # only after the probe can move
+    ap.add_argument("--no-ckpt", action="store_true", help="disable gradient checkpointing")
     ap.add_argument("--wandb", default="neuroguessr-2-research")
     a = ap.parse_args()
     if WORLD > 1 and not dist.is_initialized():
@@ -125,10 +126,11 @@ def main():
     model.load_from_ckpt(ck, strict=False)
     model.to(device)
     core = model._core()
-    try:
-        core.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
-    except Exception as e:                                          # noqa: BLE001
-        print(f"[r{RANK}] no gradient checkpointing ({e})", flush=True)
+    if not a.no_ckpt:
+        try:
+            core.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
+        except Exception as e:                                      # noqa: BLE001
+            print(f"[r{RANK}] no gradient checkpointing ({e})", flush=True)
     head = PlaceHead(1024, 2048).to(device)
 
     lora_p, cls_p = [], []
