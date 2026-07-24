@@ -269,9 +269,11 @@ def main():
             x = (x - mean_t) / std_t
             la2 = torch.cat([la, la]).to(device).float()
             lo2 = torch.cat([lo, lo]).to(device).float()
+            if step < 2 and RANK == 0: print(f"  [dbg] step {step}: forward…", flush=True)
             with torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16):
                 feats = model.features(x)
             feats = feats.float()
+            if step < 2 and RANK == 0: print(f"  [dbg] step {step}: features {tuple(feats.shape)}", flush=True)
 
             # ---- graded contrastive (LOCAL batch only; grads synced manually after backward)
             zg = head(feats)
@@ -302,8 +304,10 @@ def main():
             con_floor = -(tgt * (tgt.clamp(1e-12).log())).sum(1).mean()
 
             loss = loss_ce + a.lam_c * loss_con
+            if step < 2 and RANK == 0: print(f"  [dbg] step {step}: loss {loss.item():.3f}, backward…", flush=True)
             opt.zero_grad(set_to_none=True)
             loss.backward()
+            if step < 2 and RANK == 0: print(f"  [dbg] step {step}: backward done", flush=True)
             sync_grads()                                   # deterministic cross-rank gradient avg
             torch.nn.utils.clip_grad_norm_(trainable, 1.0)
             opt.step()
