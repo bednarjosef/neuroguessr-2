@@ -240,13 +240,19 @@ def main():
     trainable = [p for p in lora_p + cls_p + list(head.parameters()) if p.requires_grad]
 
     def sync_grads():
+        # ONE bucketed all_reduce instead of ~300 per-tensor calls (the latter ran at 39 img/s).
         if WORLD == 1:
             return
+        grads = []
         for p in trainable:
             if p.grad is None:
                 p.grad = torch.zeros_like(p)
-            dist.all_reduce(p.grad)
-            p.grad /= WORLD
+            grads.append(p.grad)
+        flat = torch._utils._flatten_dense_tensors(grads)
+        dist.all_reduce(flat)
+        flat /= WORLD
+        for p, g in zip(trainable, torch._utils._unflatten_dense_tensors(flat, grads)):
+            p.grad.copy_(g)
 
     # EVERY rank runs the probe (it does its own forward passes; no collectives inside).
     # Only rank 0's value is used for logging/decisions, but running it on all ranks keeps them
@@ -269,11 +275,9 @@ def main():
             x = (x - mean_t) / std_t
             la2 = torch.cat([la, la]).to(device).float()
             lo2 = torch.cat([lo, lo]).to(device).float()
-            if step < 2 and RANK == 0: print(f"  [dbg] step {step}: forward…", flush=True)
             with torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16):
                 feats = model.features(x)
             feats = feats.float()
-            if step < 2 and RANK == 0: print(f"  [dbg] step {step}: features {tuple(feats.shape)}", flush=True)
 
             # ---- graded contrastive (LOCAL batch only; grads synced manually after backward)
             zg = head(feats)
@@ -304,10 +308,8 @@ def main():
             con_floor = -(tgt * (tgt.clamp(1e-12).log())).sum(1).mean()
 
             loss = loss_ce + a.lam_c * loss_con
-            if step < 2 and RANK == 0: print(f"  [dbg] step {step}: loss {loss.item():.3f}, backward…", flush=True)
             opt.zero_grad(set_to_none=True)
             loss.backward()
-            if step < 2 and RANK == 0: print(f"  [dbg] step {step}: backward done", flush=True)
             sync_grads()                                   # deterministic cross-rank gradient avg
             torch.nn.utils.clip_grad_norm_(trainable, 1.0)
             opt.step()
