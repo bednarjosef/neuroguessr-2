@@ -7,7 +7,7 @@ export PYTHONPATH=/root/auto
 PY=/venv/main/bin/python
 IX=retrieval_index
 TR="$PY -m torch.distributed.run --standalone --nproc_per_node=4"
-STEPS=${STEPS:-5000}
+STEPS=${STEPS:-1800}
 ts() { date +"[%H:%M:%S] $*"; }
 
 mirror() {   # push whatever exists right now; safe to call repeatedly
@@ -30,7 +30,7 @@ EOF
 
 ts "=== 1/6 C4 joint fine-tune ($STEPS steps) ==="
 CUDA_VISIBLE_DEVICES=0,1,2,3 $TR retrieval/train_c4.py --ckpt run_c3/ckpt.pt --out run_c4 \
-    --steps $STEPS --pairs 32 --img-size 384
+    --steps $STEPS --pairs 16 --img-size 384 --no-ckpt --workers 8 --probe-every 300 --kill-step 1200
 cp run_c4/c4_head.pt $IX/c4_head.pt || true
 mirror
 
