@@ -62,6 +62,8 @@ def main():
     ap.add_argument("--gate", default="s384")
     ap.add_argument("--cap", type=int, default=400)
     ap.add_argument("--levers", default="1234 6")
+    ap.add_argument("--combo", action="store_true",
+                    help="only the winning levers, combined (fast pass)")
     a = ap.parse_args()
     d = a.index
 
@@ -166,9 +168,7 @@ def main():
     csls_r = {}
     if "4" in a.levers:
         q = torch.randint(0, N, (10_000,), device=device)
-        for src in ("cls", "geo10c"):
-            if src not in spaces:
-                continue
+        for src in [k for k in list(spaces) if not k.endswith("_wh")]:
             tr, _ = spaces[src]
             Q = tr[q]                       # keep fp16: 10k x 1024
             r = torch.empty(N, device=device, dtype=torch.float16)
@@ -210,6 +210,16 @@ def main():
     if "6" in a.levers:
         V.append(("L6 location evidence (top2)", {"cls": .5, "geo10c": .5}, "fixed", {"locagg": True}))
 
+    if a.combo:
+        b4 = {"cls": .34, "geo5c": .22, "geo10c": .22, "geo25c": .22}
+        b3 = {"cls": .4, "geo10c": .3, "geo25c": .3}
+        V = [("CHAMPION cls|geo10c +rr", {"cls": .5, "geo10c": .5}, "fixed", {}),
+             ("L4 CSLS (prev best)", {"cls": .5, "geo10c": .5}, "fixed", {"csls": True}),
+             ("COMBO 4band+CSLS", b4, "fixed", {"csls": True}),
+             ("COMBO 3band+CSLS", b3, "fixed", {"csls": True}),
+             ("COMBO 4band+CSLS+wh", {**{k: v for k, v in b4.items() if k != "cls"},
+                                      "cls_wh": .34}, "fixed", {"csls": True})]
+        V = [v for v in V if all(k in spaces for k in v[1])]
     need = sorted({s for _, w, _, _ in V for s in w})
     m_of = (csum < 0.95).sum(1) + 1
     preds = {t: np.zeros((n, 2)) for t, _, _, _ in V}
