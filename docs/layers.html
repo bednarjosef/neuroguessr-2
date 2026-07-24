@@ -1,0 +1,182 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>layers</title>
+<style>
+  body { margin:0; width:1620px; height:850px; background:#0d1016; }
+  text { font-family: "DejaVu Sans", system-ui, sans-serif; fill:#e8ebf0; }
+  .lbl { font-size:15px; font-weight:700; }
+  .sm  { font-size:12.5px; fill:#9aa5b4; }
+  .tag { font-size:11px; fill:#6f7a8a; letter-spacing:1.2px; font-weight:700; }
+  .num { font-size:12px; fill:#8b96a5; font-weight:700; }
+  .big { font-size:19px; font-weight:700; }
+</style></head><body>
+<svg width="1620" height="850" viewBox="0 0 1620 850" xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <marker id="a" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+    <path d="M0,0 L7,3 L0,6 z" fill="#6b7686"/></marker>
+  <marker id="ao" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+    <path d="M0,0 L7,3 L0,6 z" fill="#f5b942"/></marker>
+  <marker id="ag" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+    <path d="M0,0 L7,3 L0,6 z" fill="#59d3a6"/></marker>
+</defs>
+
+<!-- ============ column 1 : the stack ============ -->
+<text x="40" y="34" class="tag">ENCODER · DINOv3 ViT-L/16</text>
+
+<rect x="40" y="50" width="150" height="96" rx="7" fill="#241726" stroke="#7d4a86"/>
+<text x="115" y="88" class="lbl" text-anchor="middle">image</text>
+<text x="115" y="110" class="sm" text-anchor="middle">384 × 384</text>
+<text x="115" y="130" class="sm" text-anchor="middle">no metadata</text>
+<line x1="115" y1="146" x2="115" y2="176" stroke="#6b7686" stroke-width="2" marker-end="url(#a)"/>
+
+<rect x="40" y="178" width="150" height="58" rx="7" fill="#1a1f29" stroke="#333c4a"/>
+<text x="115" y="203" class="lbl" text-anchor="middle">patch embed</text>
+<text x="115" y="222" class="sm" text-anchor="middle">16×16 → 576 tokens</text>
+<line x1="115" y1="236" x2="115" y2="264" stroke="#6b7686" stroke-width="2" marker-end="url(#a)"/>
+
+<!-- 24 blocks -->
+<g>
+  <rect x="40" y="268" width="150" height="40" rx="6" fill="#1a1f29" stroke="#3d4756"/>
+  <text x="115" y="293" class="sm" text-anchor="middle" style="fill:#c9d1dc">block 1</text>
+  <rect x="40" y="314" width="150" height="40" rx="6" fill="#1a1f29" stroke="#3d4756"/>
+  <text x="115" y="339" class="sm" text-anchor="middle" style="fill:#c9d1dc">block 2</text>
+  <rect x="40" y="360" width="150" height="40" rx="6" fill="#1a1f29" stroke="#3d4756"/>
+  <text x="115" y="385" class="sm" text-anchor="middle" style="fill:#c9d1dc">block 3</text>
+  <text x="115" y="424" class="big" text-anchor="middle" style="fill:#6b7686">⋮</text>
+  <rect x="40" y="436" width="150" height="40" rx="6" fill="#1a1f29" stroke="#3d4756"/>
+  <text x="115" y="461" class="sm" text-anchor="middle" style="fill:#c9d1dc">block 23</text>
+  <rect x="40" y="482" width="150" height="40" rx="6" fill="#1a1f29" stroke="#3d4756"/>
+  <text x="115" y="507" class="sm" text-anchor="middle" style="fill:#c9d1dc">block 24</text>
+</g>
+<rect x="26" y="258" width="178" height="274" rx="10" fill="none" stroke="#4a5666" stroke-dasharray="4 4"/>
+<text x="212" y="392" class="num" transform="rotate(90 212 392)" text-anchor="middle">24 blocks · 300 M frozen</text>
+
+<line x1="115" y1="532" x2="115" y2="566" stroke="#6b7686" stroke-width="2" marker-end="url(#a)"/>
+<rect x="40" y="568" width="150" height="52" rx="7" fill="#1a1f29" stroke="#4a5666"/>
+<text x="115" y="590" class="lbl" text-anchor="middle">CLS token</text>
+<text x="115" y="609" class="sm" text-anchor="middle">1024-d</text>
+
+<!-- zoom bracket -->
+<path d="M204,268 L300,58 M204,532 L300,700" stroke="#3d4756" stroke-width="1.5" stroke-dasharray="5 4" fill="none"/>
+
+<!-- ============ column 2 : inside one block ============ -->
+<text x="310" y="34" class="tag">INSIDE ONE BLOCK</text>
+<rect x="300" y="46" width="470" height="660" rx="12" fill="#12161d" stroke="#3d4756"/>
+
+<rect x="330" y="74" width="410" height="38" rx="6" fill="#1a1f29" stroke="#333c4a"/>
+<text x="535" y="99" class="sm" text-anchor="middle" style="fill:#c9d1dc">LayerNorm</text>
+<line x1="535" y1="112" x2="535" y2="136" stroke="#6b7686" stroke-width="2" marker-end="url(#a)"/>
+
+<!-- attention with LoRA -->
+<rect x="316" y="138" width="438" height="252" rx="9" fill="#161b24" stroke="#4a5666"/>
+<text x="535" y="164" class="lbl" text-anchor="middle">multi-head attention</text>
+<g>
+  <rect x="336" y="182" width="88" height="52" rx="6" fill="#1a1f29" stroke="#3d4756"/>
+  <text x="380" y="214" class="lbl" text-anchor="middle">Q</text>
+  <rect x="440" y="182" width="88" height="52" rx="6" fill="#1a1f29" stroke="#3d4756"/>
+  <text x="484" y="214" class="lbl" text-anchor="middle">K</text>
+  <rect x="544" y="182" width="88" height="52" rx="6" fill="#1a1f29" stroke="#3d4756"/>
+  <text x="588" y="214" class="lbl" text-anchor="middle">V</text>
+  <rect x="648" y="182" width="88" height="52" rx="6" fill="#1a1f29" stroke="#3d4756"/>
+  <text x="692" y="214" class="lbl" text-anchor="middle">O</text>
+</g>
+<text x="535" y="252" class="sm" text-anchor="middle">each 1024 × 1024 · frozen</text>
+
+<!-- LoRA bypass -->
+<rect x="336" y="272" width="400" height="98" rx="8" fill="#2e1f0e" stroke="#a4741f" stroke-width="1.6"/>
+<text x="536" y="296" class="lbl" text-anchor="middle" style="fill:#f5b942">LoRA adapter · rank 16</text>
+<rect x="366" y="310" width="104" height="42" rx="6" fill="#3a2812" stroke="#a4741f"/>
+<text x="418" y="336" class="sm" text-anchor="middle" style="fill:#f5d79a">A &nbsp;1024→16</text>
+<line x1="470" y1="331" x2="516" y2="331" stroke="#f5b942" stroke-width="2" marker-end="url(#ao)"/>
+<rect x="518" y="310" width="104" height="42" rx="6" fill="#3a2812" stroke="#a4741f"/>
+<text x="570" y="336" class="sm" text-anchor="middle" style="fill:#f5d79a">B &nbsp;16→1024</text>
+<line x1="622" y1="331" x2="668" y2="331" stroke="#f5b942" stroke-width="2" marker-end="url(#ao)"/>
+<text x="700" y="337" class="big" text-anchor="middle" style="fill:#f5b942">＋</text>
+<path d="M380,234 L380,258 L360,258 L360,310" stroke="#f5b942" stroke-width="1.6" fill="none" marker-end="url(#ao)"/>
+<text x="536" y="386" class="sm" text-anchor="middle" style="fill:#f5b942">on all four · 3.15 M trained</text>
+
+<line x1="535" y1="390" x2="535" y2="414" stroke="#6b7686" stroke-width="2" marker-end="url(#a)"/>
+<rect x="330" y="416" width="410" height="38" rx="6" fill="#1a1f29" stroke="#333c4a"/>
+<text x="535" y="441" class="sm" text-anchor="middle" style="fill:#c9d1dc">LayerNorm</text>
+<line x1="535" y1="454" x2="535" y2="478" stroke="#6b7686" stroke-width="2" marker-end="url(#a)"/>
+
+<!-- MLP, no adapter -->
+<rect x="316" y="480" width="438" height="140" rx="9" fill="#161b24" stroke="#4a5666"/>
+<text x="535" y="506" class="lbl" text-anchor="middle">MLP</text>
+<rect x="356" y="522" width="150" height="46" rx="6" fill="#1a1f29" stroke="#3d4756"/>
+<text x="431" y="550" class="sm" text-anchor="middle">1024 → 4096</text>
+<line x1="506" y1="545" x2="556" y2="545" stroke="#6b7686" stroke-width="2" marker-end="url(#a)"/>
+<rect x="558" y="522" width="150" height="46" rx="6" fill="#1a1f29" stroke="#3d4756"/>
+<text x="633" y="550" class="sm" text-anchor="middle">4096 → 1024</text>
+<text x="535" y="598" class="sm" text-anchor="middle" style="fill:#d08a8a">201 M · no adapter — untouched</text>
+
+<text x="535" y="650" class="sm" text-anchor="middle">residual: output = input + attention + MLP</text>
+<text x="535" y="678" class="sm" text-anchor="middle" style="fill:#f5b942">only the orange path has ever been trained</text>
+
+<!-- ============ column 3 : two branches ============ -->
+<text x="820" y="34" class="tag">TWO BRANCHES READ THE SAME VECTOR</text>
+<path d="M115,620 L115,764 L800,764 L800,120" stroke="#6b7686" stroke-width="2" fill="none"/>
+<path d="M800,764 L800,700" stroke="#59d3a6" stroke-width="2" fill="none"/>
+<path d="M800,120 L866,120" stroke="#6b7686" stroke-width="2" marker-end="url(#a)"/>
+<path d="M800,700 L866,700" stroke="#59d3a6" stroke-width="2" marker-end="url(#ag)"/>
+
+<!-- classifier branch -->
+<rect x="868" y="78" width="330" height="84" rx="8" fill="#12233b" stroke="#2f5f9e"/>
+<text x="1033" y="108" class="lbl" text-anchor="middle">trunk + 4 heads</text>
+<text x="1033" y="130" class="sm" text-anchor="middle">cells A · cells B · coarse · country</text>
+<text x="1033" y="150" class="sm" text-anchor="middle" style="fill:#7db3ff">12.0 M trained</text>
+<line x1="1198" y1="120" x2="1246" y2="120" stroke="#6b7686" stroke-width="2" marker-end="url(#a)"/>
+
+<rect x="1248" y="70" width="332" height="100" rx="8" fill="#161b24" stroke="#4a5666"/>
+<text x="1414" y="98" class="lbl" text-anchor="middle">5 000 geocells</text>
+<g>
+  <rect x="1278" y="112" width="16" height="40" fill="#2f5f9e"/><rect x="1300" y="126" width="16" height="26" fill="#2f5f9e"/>
+  <rect x="1322" y="134" width="16" height="18" fill="#2f5f9e"/><rect x="1344" y="140" width="16" height="12" fill="#2f5f9e"/>
+  <rect x="1366" y="143" width="16" height="9" fill="#2f5f9e"/><rect x="1388" y="145" width="16" height="7" fill="#2f5f9e"/>
+  <rect x="1410" y="146" width="16" height="6" fill="#2f5f9e"/><rect x="1432" y="147" width="16" height="5" fill="#2f5f9e"/>
+  <rect x="1454" y="148" width="16" height="4" fill="#2f5f9e"/><rect x="1476" y="148" width="16" height="4" fill="#2f5f9e"/>
+  <rect x="1498" y="149" width="16" height="3" fill="#2f5f9e"/><rect x="1520" y="149" width="16" height="3" fill="#2f5f9e"/>
+</g>
+<path d="M1414,170 L1414,206" stroke="#6b7686" stroke-width="2" marker-end="url(#a)"/>
+<rect x="1248" y="208" width="332" height="72" rx="8" fill="#241726" stroke="#7d4a86"/>
+<text x="1414" y="236" class="lbl" text-anchor="middle">gate: top 95 % of mass</text>
+<text x="1414" y="260" class="sm" text-anchor="middle">≈ 42 cells → 22 000 candidate photos</text>
+
+<!-- descriptor branch -->
+<rect x="868" y="656" width="330" height="88" rx="8" fill="#0f2a22" stroke="#2f8f6d"/>
+<text x="1033" y="686" class="lbl" text-anchor="middle">place heads ×2</text>
+<text x="1033" y="708" class="sm" text-anchor="middle">1024→2048→1024, residual</text>
+<text x="1033" y="729" class="sm" text-anchor="middle" style="fill:#59d3a6">8.4 M trained</text>
+<line x1="1198" y1="700" x2="1246" y2="700" stroke="#59d3a6" stroke-width="2" marker-end="url(#ag)"/>
+
+<rect x="1248" y="660" width="332" height="80" rx="8" fill="#161b24" stroke="#4a5666"/>
+<text x="1414" y="688" class="lbl" text-anchor="middle">descriptor</text>
+<text x="1414" y="712" class="sm" text-anchor="middle">1024-d, similarity = closeness on Earth</text>
+
+<!-- index + match -->
+<rect x="1248" y="300" width="332" height="112" rx="8" fill="#241726" stroke="#7d4a86"/>
+<text x="1414" y="330" class="lbl" text-anchor="middle">index · 1 198 072 photos</text>
+<text x="1414" y="354" class="sm" text-anchor="middle">every training image, pre-encoded</text>
+<text x="1414" y="376" class="sm" text-anchor="middle">2.4 GB descriptors + 4.9 GB regional</text>
+<text x="1414" y="398" class="sm" text-anchor="middle" style="fill:#d59ae0">searched only inside the gated cells</text>
+
+<path d="M1414,280 L1414,298" stroke="#6b7686" stroke-width="2" marker-end="url(#a)"/>
+<path d="M1414,658 L1414,600" stroke="#59d3a6" stroke-width="2" marker-end="url(#ag)"/>
+<path d="M1414,412 L1414,462" stroke="#6b7686" stroke-width="2" marker-end="url(#a)"/>
+
+<rect x="1248" y="464" width="332" height="130" rx="8" fill="#0f2a22" stroke="#2f8f6d" stroke-width="1.6"/>
+<text x="1414" y="494" class="lbl" text-anchor="middle">nearest match wins</text>
+<text x="1414" y="518" class="sm" text-anchor="middle">cosine + weak classifier vote</text>
+<text x="1414" y="540" class="sm" text-anchor="middle">→ rerank top 50 by image regions</text>
+<text x="1414" y="566" class="big" text-anchor="middle" style="fill:#59d3a6">output = its coordinates</text>
+<text x="1414" y="586" class="sm" text-anchor="middle">not a cell centre — a real photo's GPS</text>
+
+<!-- legend -->
+<g>
+  <rect x="40" y="800" width="14" height="14" rx="3" fill="#333c4a"/><text x="62" y="812" class="sm">frozen</text>
+  <rect x="180" y="800" width="14" height="14" rx="3" fill="#a4741f"/><text x="202" y="812" class="sm">LoRA (trained on images)</text>
+  <rect x="410" y="800" width="14" height="14" rx="3" fill="#2f5f9e"/><text x="432" y="812" class="sm">classifier heads</text>
+  <rect x="570" y="800" width="14" height="14" rx="3" fill="#2f8f6d"/><text x="592" y="812" class="sm">place heads</text>
+  <rect x="700" y="800" width="14" height="14" rx="3" fill="#7d4a86"/><text x="722" y="812" class="sm">data</text>
+</g>
+</svg>
+</body></html>
