@@ -1,0 +1,16 @@
+Traceback (most recent call last):
+  File "/root/auto/retrieval/eval_c2_gpu.py", line 304, in <module>
+    main()
+  File "/root/auto/retrieval/eval_c2_gpu.py", line 87, in main
+    ck = torch.load(a.ckpt, map_location="cpu", weights_only=False)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/venv/main/lib/python3.12/site-packages/torch/serialization.py", line 1530, in load
+    with _open_file_like(f, "rb") as opened_file:
+         ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/venv/main/lib/python3.12/site-packages/torch/serialization.py", line 795, in _open_file_like
+    return _open_file(name_or_buffer, mode)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/venv/main/lib/python3.12/site-packages/torch/serialization.py", line 776, in __init__
+    super().__init__(open(name, mode))  # noqa: SIM115
+                     ^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'run_full2/ckpt_best.pt'

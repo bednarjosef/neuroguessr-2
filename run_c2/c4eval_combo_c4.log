@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "/root/auto/retrieval/eval_levers.py", line 309, in <module>
+    main()
+  File "/root/auto/retrieval/eval_levers.py", line 88, in main
+    cent = torch.tensor(np.load(os.path.join(d, "centroids.npz"))["cent"], dtype=torch.float32,
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/venv/main/lib/python3.12/site-packages/numpy/lib/_npyio_impl.py", line 454, in load
+    fid = stack.enter_context(open(os.fspath(file), "rb"))
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'retrieval_index/centroids.npz'

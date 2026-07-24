@@ -34,6 +34,15 @@ Objective: **`median_km`** (median great-circle error on the val split), **lower
   instance detail; tap BEFORE the trunk). Beats single-image PIGEON everywhere; @1km beats
   even their panorama number. Index: 2.4GB fp16 (bb tap) on HF fullrun2-ckpt repo
   (retrieval_index/); rebuildable in ~25 min/$1 via retrieval/embed_full.py.
+- **BEST MEASURED CONFIG (2026-07-24 evening, local CPU eval on the C4 bed): median 34.10 /
+  @25km 46.26% / @1km 10.14% / mean 328 / GG 4470** = C4 index + 4band+CSLS+wh recipe +
+  **E7 learned reranker** (16-feature logistic over the gated top-100, 5-fold CV, blended
+  λ2; λ1 gives 36.66 / 45.86 / @1 11.61 — λ is a median↔@1km dial). Chamfer rerank DROPPED
+  (Josef: struggle/benefit). Attribution honesty: the win is E7's, not C4's — C4's
+  descriptors are slightly WORSE than C3's (same recipe: 40.98 vs 36.96); C4's *classifier*
+  is slightly better than full-run2's (103.19/432/cell_top1 27.12 vs 104.47/471/26.35 —
+  the joint CE anchor works). E7 replays on any bed for cents (scripts in session scratchpad;
+  episode caches episodes_c4.npz). Next encoder: docs/C5_PLAN.md.
 - **train.py commit:** see autoresearch/2026-07-22-ideas branch (S6 keeps committed there;
   master carries the same file)
 - **one-line:** session-4 stack + **country-level hierarchy** (w=0.5, majority-vote parents)
@@ -598,6 +607,45 @@ appears, not in one batch.**
   PROXY until direct port provisioning lands — poll for the flip, don't reject on first sight.
 - Retrieval-readiness at final: cell_top1 26.2 / top10 70.5 / rr10@100 75.7 — same regime as
   run #1 ⇒ retrieval index built on run2 ckpt_best (stagger head + aug-trained embeddings).
+
+### 2026-07-24 evening — C4 rescue eval + local E7 campaign: best config 34.10 km (E7's win, not C4's)
+- **The C4 morning box was a lemon**: GPU 0 power-capped at 547/3090 MHz drawing full watts —
+  trained at 33 img/s (~1/7), re-indexed rank 0 at 23 img/s; the overnight "NCCL deadlock"
+  commits were almost certainly chasing this hardware fault. Credit ran out mid-eval; box
+  died with the index 75% built. Screen-before-commit protocol now standing (CLAUDE.md +
+  tools/screen_gpus.py: TFLOPs/GPU + net probe on the real artifact — v4 lesson: probe the
+  LFS CDN artifact, not a Xet-backed file, or good boxes read 15MB/s and get killed).
+- **Rescue**: 5 driver iterations (ssh-retry; AR_N_TRAIN cache-tar naming; prepare.py aborts
+  in teardown AFTER success → grep markers not exit codes; pip stalls). Estonia box rebuilt
+  the index at 185 img/s/rank; band heads trained; **grids crashed on unstaged implicit deps**
+  (centroids.npz, run_full2/ckpt_best.pt) and `|| true` declared DONE anyway → headline
+  numbers computed LOCALLY on CPU from the HF-mirrored bed (~10 min, faithful eval_levers
+  port incl. CSLS 2s−r and whitening; chamfer dropped). Bed archived: HF c4/ + run_c4_index/.
+- **C4 verdict**: recipe-level 40.98/44.13 (vs C3 champion 36.96/46.06 → descriptors slightly
+  WORSE; 0.19-epoch dose on the lemon). Classifier measurably BETTER (103.19 median/mean 432/
+  cell_top1 27.12 vs 104.47/471/26.35) → the joint CE anchor thesis validated; single-pass
+  gate works (whole eval gated by C4's own logits).
+- **E7 learned reranker = the discovery** (all CPU, cached vectors, 5-fold CV): 16 features/
+  candidate (sims, rank, margin, geo-consensus mass, visual-affinity stats, entropy) →
+  logistic → blend. S384 bed 49.04→42.74 (−13%); C4 bed 40.98→**34.10 / 46.26 / GG 4470**
+  (λ2; λ1 = 36.66 keeping @1 11.61). Validated en route: candidate geo-consensus (E1 −4).
+  KILLED with evidence: k-reciprocal (2 variants), graph diffusion, SuperGlobal QE,
+  classifier fallback (×2 — correlated failures; classifier-only mean 471 is WORSE than
+  retrieval's), wide re-gate (posterior has no mass near truth), prior fallback/shrink
+  (dataset is world-spread, prior minimiser 6100 km out; **outcome-selected tail ≠
+  detector-selected tail — the catastrophic misses are CONFIDENTLY wrong**, so no
+  confidence threshold isolates them). Full detail: docs/RETRIEVAL_ROADMAP.md.
+- **Mean conclusion**: floored (~330) by ~170 queries invisible to BOTH evidence channels;
+  post-hoc decision rules are closed — mean progress = evidence progress (attribute
+  channels, better encoder). Bug logged: round-4 paired run-1 cell coords with run-2 logits
+  (E4's first death was on false testimony) — always take centroids from the SAME run's ckpt.
+- **C5 planned** (docs/C5_PLAN.md): from-scratch joint single-phase (CE+hier+country +
+  attribute heads w/ free coordinate labels + graded listwise episodes on geography-mined
+  pools + climate-matched cross-continent negatives for the tail), probe with verified
+  resolution, ~2.5-3h/$5-6 session, and the BED CONTRACT (train-side episode cache, both-
+  split logits, attribute posteriors, val patch tokens…) so post-C5 iteration is CPU-only.
+  Phase 0 started: attr label tables built (data/attr_labels_*.npz — val: 123 countries,
+  25.9% left-driving, Köppen C 42.5%), screen/restore tools in repo. Spend today: ~$14.
 
 ### 2026-07-22 evening — S6 idea-batch ratchet (Italy 1x5090, 8 exps + integration): 215.65 -> 205.46
 - **KEEP: MSL** (differentiable spherical-mean + Geman-McClure km loss, w0.5/s300/T0.5):
