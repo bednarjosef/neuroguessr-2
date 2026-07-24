@@ -348,7 +348,7 @@ def cmd_sync(a) -> None:
                          "__pycache__", "findings.md", "dev", ".env",
                          # local run dirs hold multi-GB checkpoints/indices — never upload
                          # them (fetch checkpoints from HF on the box instead)
-                         "run_full", "run_full2", "run_smoke", ".inductor"))
+                         "run_full", "run_full2", "run_smoke", "run_c3", "run_c4", ".inductor"))
     remote = " ".join(ssh_base(s)) + f" 'mkdir -p {REMOTE_DIR} && tar xzf - -C {REMOTE_DIR}'"
     subprocess.run(f"tar czf - {excludes} -C {REPO} . | {remote}", shell=True, check=True)
     print("upload complete.")
