@@ -162,7 +162,7 @@ def main():
     # almost no query has any neighbour within d_pos and the probe pins near 0 (the C4-run-1
     # failure). 600 queries x 6000 pool locations (up to 2 views each) -> hundreds of hits.
     rng = np.random.default_rng(0)
-    held = rng.choice(len(uniq), size=6600, replace=False)
+    held = rng.choice(len(uniq), size=2600, replace=False)  # 600 q + 2000 pool locs
     q_loc, p_loc = held[:600], held[600:]
     q_rows = np.array([order[starts[l]] for l in q_loc])
     p_rows = np.array([r for l in p_loc for r in order[starts[l]:starts[l] + 2]])
@@ -229,17 +229,22 @@ def main():
         except Exception as e:                                       # noqa: BLE001
             print(f"[r0] wandb off ({e})", flush=True)
 
-    def gather(t):
+    # Gradient sync is done by a DETERMINISTIC manual all-reduce after backward (fixed param
+    # order), NOT by an autograd all_gather inside the loss. The autograd-gather approach
+    # deadlocked here: with two loss branches (local CE + collective contrastive) and gradient
+    # checkpointing, the backward-collective ordering diverged across ranks and NCCL spun
+    # forever at 100% util. C3 avoided it by having only the contrastive branch. The contrastive
+    # loss is therefore computed LOCALLY on each rank's own batch (2*pairs negatives is plenty).
+    trainable = [p for p in lora_p + cls_p + list(head.parameters()) if p.requires_grad]
+
+    def sync_grads():
         if WORLD == 1:
-            return t
-        try:
-            from torch.distributed.nn.functional import all_gather as ag
-            return torch.cat(ag(t))
-        except Exception:                                            # noqa: BLE001
-            out = [torch.zeros_like(t) for _ in range(WORLD)]
-            dist.all_gather(out, t.detach())
-            out[RANK] = t
-            return torch.cat(out)
+            return
+        for p in trainable:
+            if p.grad is None:
+                p.grad = torch.zeros_like(p)
+            dist.all_reduce(p.grad)
+            p.grad /= WORLD
 
     # EVERY rank runs the probe (it does its own forward passes; no collectives inside).
     # Only rank 0's value is used for logging/decisions, but running it on all ranks keeps them
@@ -266,9 +271,9 @@ def main():
                 feats = model.features(x)
             feats = feats.float()
 
-            # ---- graded contrastive
-            z = head(feats)
-            zg, lag, log_ = gather(z), gather(la2).detach(), gather(lo2).detach()
+            # ---- graded contrastive (LOCAL batch only; grads synced manually after backward)
+            zg = head(feats)
+            lag, log_ = la2.detach(), lo2.detach()
             G = zg.shape[0]
             dkm = haversine_t(lag.unsqueeze(1), log_.unsqueeze(1),
                               lag.unsqueeze(0), log_.unsqueeze(0))
@@ -297,7 +302,8 @@ def main():
             loss = loss_ce + a.lam_c * loss_con
             opt.zero_grad(set_to_none=True)
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(lora_p + cls_p + list(head.parameters()), 1.0)
+            sync_grads()                                   # deterministic cross-rank gradient avg
+            torch.nn.utils.clip_grad_norm_(trainable, 1.0)
             opt.step()
             sched.step()
             step += 1
