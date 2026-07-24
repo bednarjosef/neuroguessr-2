@@ -25,6 +25,7 @@ Launch (4 GPUs):
 import argparse
 import os
 import time
+from datetime import timedelta
 
 import numpy as np
 import torch
@@ -105,7 +106,9 @@ def main():
     ap.add_argument("--wandb", default="neuroguessr-2-research")
     a = ap.parse_args()
     if WORLD > 1 and not dist.is_initialized():
-        dist.init_process_group("nccl")
+        # 2 h collective timeout: rank 0 runs the (image-decoding, variable-time) probe alone
+        # while the others wait at a barrier; the default 600 s ceiling tripped otherwise.
+        dist.init_process_group("nccl", timeout=timedelta(hours=2))
     os.makedirs(a.out, exist_ok=True)
 
     img_dir, df = load_index("train")
@@ -194,15 +197,22 @@ def main():
         return torch.cat(outs)
 
     def probe():
-        model.eval()
-        head.eval()
-        zq, zp = embed_rows(q_rows), embed_rows(p_rows)
-        best = (zq @ zp.T).argmax(1)
-        ar = torch.arange(len(q_rows), device=device)
-        model.train()
-        head.train()
-        return (float(probe_ok[ar, best].float().mean()),
-                float(probe_ok25[ar, best].float().mean()))
+        """Rank-0-only (it decodes 12k images at variable speed; running it on every rank
+        desyncs them past the collective timeout). Others wait at the barrier."""
+        r = (0.0, 0.0)
+        if RANK == 0:
+            model.eval()
+            head.eval()
+            zq, zp = embed_rows(q_rows), embed_rows(p_rows)
+            best = (zq @ zp.T).argmax(1)
+            ar = torch.arange(len(q_rows), device=device)
+            model.train()
+            head.train()
+            r = (float(probe_ok[ar, best].float().mean()),
+                 float(probe_ok25[ar, best].float().mean()))
+        if WORLD > 1:
+            dist.barrier()
+        return r
 
     opt = torch.optim.AdamW([{"params": lora_p, "lr": a.lr},
                              {"params": cls_p, "lr": a.lr * 2},
