@@ -608,6 +608,27 @@ appears, not in one batch.**
 - Retrieval-readiness at final: cell_top1 26.2 / top10 70.5 / rr10@100 75.7 — same regime as
   run #1 ⇒ retrieval index built on run2 ckpt_best (stagger head + aug-trained embeddings).
 
+### 2026-07-24 night — C5 BED RUN COMPLETE: from-scratch joint train + full bed, $5.1
+- **train_c5.py** (docs/C5_PLAN.md): DINOv3 + fresh LoRA (attn+MLP r16), joint CE(hier+
+  country+MSL) + graded listwise episodes (geography-mined pools, climate-matched
+  cross-continent negatives) + attribute heads (free labels), interleaved batches, 1 epoch
+  = 2.4M views @ 726 img/s on a screened Estonia 4x5090 ($1.60/hr).
+- **Probe (resolution-verified, ceiling 100%): 9.5% -> 19.5%** @25km near-recall@1 —
+  the encoder doubled its retrieval discrimination. **Classifier best quick-val median
+  104.06** = the 3-epoch full-run bar, hit in ONE joint epoch from scratch (final full-val
+  112.0 on last weights; ckpt_best is the bed encoder). Attr heads: drive 89%, Köppen 83%
+  by step 200. W&B: c5-bed-main.
+- **Bed mirrored to HF c5/ with MANIFEST OK (53 artifacts)**: cls/mean/reg train+val,
+  val logits, train gate top-50, **train-side episode cache** (1.2M x top-50), attribute
+  posteriors, val patch tokens, band heads 5/10/25, centroids, latlon/meta. Box destroyed
+  clean, nothing billing. Incidents (all recovered): local background tasks killed twice
+  (supervision now setsid-detached), pilot1 OOM (PATCH_KEEP 1.0 without batch drop — the
+  pairing rule), embed strict-load crash on attr_heads keys (fix committed). Pilot marker
+  + pilot probe-cadence holes noted for run_c5.sh.
+- **Next (all CPU on the bed)**: standard eval + E7 port vs champion 34.10; big-E7 on the
+  episode cache; attribute-mask mean campaign; mobile ablations (PQ sweep, index thinning,
+  mobile recipe — app is FULLY OFFLINE, Android first).
+
 ### 2026-07-24 evening — C4 rescue eval + local E7 campaign: best config 34.10 km (E7's win, not C4's)
 - **The C4 morning box was a lemon**: GPU 0 power-capped at 547/3090 MHz drawing full watts —
   trained at 33 img/s (~1/7), re-indexed rank 0 at 23 img/s; the overnight "NCCL deadlock"
