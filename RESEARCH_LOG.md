@@ -34,7 +34,7 @@ Objective: **`median_km`** (median great-circle error on the val split), **lower
   instance detail; tap BEFORE the trunk). Beats single-image PIGEON everywhere; @1km beats
   even their panorama number. Index: 2.4GB fp16 (bb tap) on HF fullrun2-ckpt repo
   (retrieval_index/); rebuildable in ~25 min/$1 via retrieval/embed_full.py.
-- **BEST MEASURED CONFIG (2026-07-24 evening, local CPU eval on the C4 bed): median 34.10 /
+- **BEST MEASURED CONFIG (confirmed still champion after C5, 2026-07-25: local CPU eval on the C4 bed): median 34.10 /
   @25km 46.26% / @1km 10.14% / mean 328 / GG 4470** = C4 index + 4band+CSLS+wh recipe +
   **E7 learned reranker** (16-feature logistic over the gated top-100, 5-fold CV, blended
   λ2; λ1 gives 36.66 / 45.86 / @1 11.61 — λ is a median↔@1km dial). Chamfer rerank DROPPED
@@ -625,9 +625,22 @@ appears, not in one batch.**
   (supervision now setsid-detached), pilot1 OOM (PATCH_KEEP 1.0 without batch drop — the
   pairing rule), embed strict-load crash on attr_heads keys (fix committed). Pilot marker
   + pilot probe-cadence holes noted for run_c5.sh.
-- **Next (all CPU on the bed)**: standard eval + E7 port vs champion 34.10; big-E7 on the
-  episode cache; attribute-mask mean campaign; mobile ablations (PQ sweep, index thinning,
-  mobile recipe — app is FULLY OFFLINE, Android first).
+- **EVAL VERDICT (local CPU, 7 min after an 8x-faster hf_transfer download): C5's encoder
+  LOSES.** Recipe 4band+CSLS+wh: **47.82 / 42.56%** (C4: 40.98/44.13); +E7 λ2: **38.65 /
+  45.10%** — behind the champion. **CHAMPION REMAINS C4-bed + E7 λ2 = 34.10 / 46.26% /
+  GG 4470.** Diagnosis: probe doubling (9.5→19.5) was vs raw DINOv3, but C3/C4 carry ~3.5
+  epochs of accumulated backbone adaptation vs C5's one; corroboration: C5 cls hubness
+  r=0.787 vs C4 0.604 (under-differentiated space), sharper gate (55 vs 72 cells).
+  **Scratch-vs-warm answered: 1 epoch from scratch matches the classifier, NOT the
+  descriptors.** Next encoder move: **C5 loss recipe warm-started from C4** (~$3; balance
+  ~$1.9 — needs top-up). C5 keeps: pipeline validated end-to-end, attr heads/labels
+  (bed-transferable — refit as probes on C4 descriptors), episode machinery, probe infra.
+- **Next (all CPU, champion C4 bed)**: attribute-consistency mean campaign with probes
+  refit on C4 descriptors; big-E7 trained on C5 episode cache applied to C4 pools; mobile
+  ablations (PQ sweep, thinning, mobile recipe — app FULLY OFFLINE, Android first).
+  Eval scripts preserved: retrieval/local_evals/ (E-series + bed evals + train_c5 patcher);
+  results log run_c5_logs/c5_local_eval_results.log. Fast HF pulls: hf_transfer+hf_xet via
+  uv + 4-way parallel = 2.5GB in 290s (was ~40 min).
 
 ### 2026-07-24 evening — C4 rescue eval + local E7 campaign: best config 34.10 km (E7's win, not C4's)
 - **The C4 morning box was a lemon**: GPU 0 power-capped at 547/3090 MHz drawing full watts —

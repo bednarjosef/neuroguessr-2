@@ -1,0 +1,28 @@
+all inputs present — starting
+gate ready (3s): 5000 cells, median gate size 55 cells
+space geo5c ready (22s)
+space geo10c ready (38s)
+space geo25c ready (54s)
+whitened cls ready (60s)
+csls r() cls: mean 0.787 (78s)
+csls r() geo5c: mean 0.523 (95s)
+csls r() geo10c: mean 0.576 (113s)
+csls r() geo25c: mean 0.618 (131s)
+  500/2998 (175s)
+  1000/2998 (223s)
+  1500/2998 (266s)
+  2000/2998 (338s)
+  2500/2998 (384s)
+
+=== C5 RESULTS, full val (champion C3-recipe = 36.96 / 46.06 / 12.78 / 4452) ===
+CHAMPION-recipe cls|geo10c         median   59.27  mean    413  @1 10.04%  @25 38.19%  @200 70.38%  GG  4383
+4band+CSLS                         median   48.03  mean    392  @1 11.54%  @25 41.79%  @200 72.35%  GG  4422
+4band+CSLS+wh                      median   47.82  mean    383  @1 12.04%  @25 42.56%  @200 72.98%  GG  4429
+episodes cached (episodes_c5.npz)
+E7 features (435s)
+
+=== E7 on the C5 bed (base: 4band+CSLS+wh) ===
+E7 blend lam0.5                    median   40.99  mean    381  @1 11.97%  @25 44.36%  @200 73.28%  GG  4441
+E7 blend lam1.0                    median   40.28  mean    379  @1 11.37%  @25 44.93%  @200 73.08%  GG  4443
+E7 blend lam2.0                    median   38.65  mean    374  @1  9.94%  @25 45.10%  @200 73.18%  GG  4444
+ALL DONE (441s)
