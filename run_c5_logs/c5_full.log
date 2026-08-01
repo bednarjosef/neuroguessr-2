@@ -1,0 +1,800 @@
+[r1] 60000/299518 (598 q/s, ETA 6.7 min)
+[r3] 60000/299518 (584 q/s, ETA 6.8 min)
+[r0] 60000/299518 (534 q/s, ETA 7.5 min)
+[r2] 80000/299518 (603 q/s, ETA 6.1 min)
+[r1] 80000/299518 (603 q/s, ETA 6.1 min)
+[r3] 80000/299518 (590 q/s, ETA 6.2 min)
+[r0] 80000/299518 (552 q/s, ETA 6.6 min)
+[r2] 100000/299518 (605 q/s, ETA 5.5 min)
+[r1] 100000/299518 (605 q/s, ETA 5.5 min)
+[r3] 100000/299518 (593 q/s, ETA 5.6 min)
+[r0] 100000/299518 (563 q/s, ETA 5.9 min)
+[r2] 120000/299518 (608 q/s, ETA 4.9 min)
+[r1] 120000/299518 (607 q/s, ETA 4.9 min)
+[r3] 120000/299518 (595 q/s, ETA 5.0 min)
+[r0] 120000/299518 (572 q/s, ETA 5.2 min)
+[r1] 140000/299518 (610 q/s, ETA 4.4 min)
+[r2] 140000/299518 (609 q/s, ETA 4.4 min)
+[r3] 140000/299518 (594 q/s, ETA 4.5 min)
+[r0] 140000/299518 (578 q/s, ETA 4.6 min)
+[r2] 160000/299518 (610 q/s, ETA 3.8 min)
+[r1] 160000/299518 (610 q/s, ETA 3.8 min)
+[r3] 160000/299518 (595 q/s, ETA 3.9 min)
+[r0] 160000/299518 (582 q/s, ETA 4.0 min)
+[r1] 180000/299518 (611 q/s, ETA 3.3 min)
+[r2] 180000/299518 (611 q/s, ETA 3.3 min)
+[r3] 180000/299518 (596 q/s, ETA 3.3 min)
+[r0] 180000/299518 (586 q/s, ETA 3.4 min)
+[r1] 200000/299518 (611 q/s, ETA 2.7 min)
+[r2] 200000/299518 (611 q/s, ETA 2.7 min)
+[r3] 200000/299518 (597 q/s, ETA 2.8 min)
+[r0] 200000/299518 (589 q/s, ETA 2.8 min)
+[r2] 220000/299518 (612 q/s, ETA 2.2 min)
+[r1] 220000/299518 (612 q/s, ETA 2.2 min)
+[r3] 220000/299518 (598 q/s, ETA 2.2 min)
+[r0] 220000/299518 (590 q/s, ETA 2.2 min)
+[r1] 240000/299518 (613 q/s, ETA 1.6 min)
+[r2] 240000/299518 (612 q/s, ETA 1.6 min)
+[r3] 240000/299518 (599 q/s, ETA 1.7 min)
+[r0] 240000/299518 (591 q/s, ETA 1.7 min)
+[r1] 260000/299518 (614 q/s, ETA 1.1 min)
+[r2] 260000/299518 (613 q/s, ETA 1.1 min)
+[r3] 260000/299518 (599 q/s, ETA 1.1 min)
+[r0] 260000/299518 (592 q/s, ETA 1.1 min)
+[r1] 280000/299518 (614 q/s, ETA 0.5 min)
+[r2] 280000/299518 (613 q/s, ETA 0.5 min)
+[r3] 280000/299518 (599 q/s, ETA 0.5 min)
+[r0] 280000/299518 (593 q/s, ETA 0.5 min)
+[r1] EPISODE CACHE DONE 299518 rows in 8.1 min
+[r2] EPISODE CACHE DONE 299518 rows in 8.1 min
+[r3] EPISODE CACHE DONE 299518 rows in 8.3 min
+[r0] EPISODE CACHE DONE 299518 rows in 8.4 min
+[19:33:34] === 7/8 band heads 5/10/25 (offline, one per GPU) ===
+[19:45:54] === 8/8 manifest check + final mirror ===
+MANIFEST OK (53 artifacts)
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  run_c5/ckpt_best.pt         :  97%|█████████▋|  224MB /  230MB            [A[A
+
+  run_c5/ckpt_best.pt         :  97%|█████████▋|  224MB /  230MB            [A[AProcessing Files (0 / 1)      :  97%|█████████▋|  224MB /  230MB,   ???B/s  
+
+  run_c5/ckpt_best.pt         : 100%|██████████|  230MB /  230MB            [A[AProcessing Files (1 / 1)      : 100%|██████████|  230MB /  230MB,   ???B/s  Processing Files (1 / 1)      : 100%|██████████|  230MB /  230MB,   ???B/s  
+New Data Upload               : |          |  0.00B /  0.00B,   ???B/s  
+  run_c5/ckpt_best.pt         : 100%|██████████|  230MB /  230MB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up run_c5/ckpt_best.pt
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  run_c5/ckpt_final.pt        :  80%|███████▉  |  184MB /  230MB            [A[A
+
+  run_c5/ckpt_final.pt        :  80%|███████▉  |  184MB /  230MB            [A[AProcessing Files (0 / 1)      :  80%|███████▉  |  184MB /  230MB,   ???B/s  
+
+  run_c5/ckpt_final.pt        : 100%|██████████|  230MB /  230MB            [A[AProcessing Files (1 / 1)      : 100%|██████████|  230MB /  230MB,   ???B/s  Processing Files (1 / 1)      : 100%|██████████|  230MB /  230MB,   ???B/s  
+New Data Upload               : |          |  0.00B /  0.00B,   ???B/s  
+  run_c5/ckpt_final.pt        : 100%|██████████|  230MB /  230MB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up run_c5/ckpt_final.pt
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...ex/c2_cls_train_c5_r3.npy:  34%|███▍      |  208MB /  613MB            [A[A
+
+  ...ex/c2_cls_train_c5_r3.npy:  34%|███▍      |  208MB /  613MB            [A[AProcessing Files (0 / 1)      :  34%|███▍      |  208MB /  613MB,   ???B/s  
+
+  ...ex/c2_cls_train_c5_r3.npy:  68%|██████▊   |  416MB /  613MB            [A[AProcessing Files (0 / 1)      :  68%|██████▊   |  416MB /  613MB,   ???B/s  
+
+  ...ex/c2_cls_train_c5_r3.npy:  99%|█████████▉|  608MB /  613MB            [A[AProcessing Files (0 / 1)      :  99%|█████████▉|  608MB /  613MB, 58.4MB/s  
+
+  ...ex/c2_cls_train_c5_r3.npy: 100%|██████████|  613MB /  613MB            [A[AProcessing Files (1 / 1)      : 100%|██████████|  613MB /  613MB, 57.5MB/s  Processing Files (1 / 1)      : 100%|██████████|  613MB /  613MB, 57.5MB/s  
+New Data Upload               : |          |  0.00B /  0.00B,  0.00B/s  
+  ...ex/c2_cls_train_c5_r3.npy: 100%|██████████|  613MB /  613MB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/c2_cls_train_c5_r3.npy
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...ex/c2_cls_train_c5_r1.npy:  37%|███▋      |  224MB /  613MB            [A[A
+
+  ...ex/c2_cls_train_c5_r1.npy:  37%|███▋      |  224MB /  613MB            [A[AProcessing Files (0 / 1)      :  37%|███▋      |  224MB /  613MB,   ???B/s  
+
+  ...ex/c2_cls_train_c5_r1.npy:  73%|███████▎  |  448MB /  613MB            [A[AProcessing Files (0 / 1)      :  73%|███████▎  |  448MB /  613MB,   ???B/s  
+
+  ...ex/c2_cls_train_c5_r1.npy: 100%|██████████|  613MB /  613MB            [A[AProcessing Files (1 / 1)      : 100%|██████████|  613MB /  613MB, 58.8MB/s  Processing Files (1 / 1)      : 100%|██████████|  613MB /  613MB, 58.8MB/s  
+New Data Upload               : |          |  0.00B /  0.00B,  0.00B/s  
+  ...ex/c2_cls_train_c5_r1.npy: 100%|██████████|  613MB /  613MB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/c2_cls_train_c5_r1.npy
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...x/c2_mean_train_c5_r3.npy:  46%|████▌     |  280MB /  613MB            [A[A
+
+  ...x/c2_mean_train_c5_r3.npy:  46%|████▌     |  280MB /  613MB            [A[AProcessing Files (0 / 1)      :  46%|████▌     |  280MB /  613MB,   ???B/s  
+
+  ...x/c2_mean_train_c5_r3.npy:  95%|█████████▌|  584MB /  613MB            [A[AProcessing Files (0 / 1)      :  95%|█████████▌|  584MB /  613MB,   ???B/s  
+
+  ...x/c2_mean_train_c5_r3.npy: 100%|██████████|  613MB /  613MB            [A[AProcessing Files (1 / 1)      : 100%|██████████|  613MB /  613MB, 58.5MB/s  Processing Files (1 / 1)      : 100%|██████████|  613MB /  613MB, 58.5MB/s  
+New Data Upload               : |          |  0.00B /  0.00B,  0.00B/s  
+  ...x/c2_mean_train_c5_r3.npy: 100%|██████████|  613MB /  613MB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/c2_mean_train_c5_r3.npy
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...x/c2_mean_train_c5_r1.npy:  37%|███▋      |  224MB /  613MB            [A[A
+
+  ...x/c2_mean_train_c5_r1.npy:  37%|███▋      |  224MB /  613MB            [A[AProcessing Files (0 / 1)      :  37%|███▋      |  224MB /  613MB,   ???B/s  
+
+  ...x/c2_mean_train_c5_r1.npy:  78%|███████▊  |  480MB /  613MB            [A[AProcessing Files (0 / 1)      :  78%|███████▊  |  480MB /  613MB,   ???B/s  
+
+  ...x/c2_mean_train_c5_r1.npy: 100%|██████████|  613MB /  613MB            [A[AProcessing Files (1 / 1)      : 100%|██████████|  613MB /  613MB, 58.8MB/s  Processing Files (1 / 1)      : 100%|██████████|  613MB /  613MB, 58.8MB/s  
+New Data Upload               : |          |  0.00B /  0.00B,  0.00B/s  
+  ...x/c2_mean_train_c5_r1.npy: 100%|██████████|  613MB /  613MB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/c2_mean_train_c5_r1.npy
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...ex/c2_reg_train_c5_r3.npy:  19%|█▉        |  232MB / 1.23GB            [A[A
+
+  ...ex/c2_reg_train_c5_r3.npy:  19%|█▉        |  232MB / 1.23GB            [A[AProcessing Files (0 / 1)      :  19%|█▉        |  232MB / 1.23GB,   ???B/s  
+
+  ...ex/c2_reg_train_c5_r3.npy:  34%|███▍      |  416MB / 1.23GB            [A[AProcessing Files (0 / 1)      :  34%|███▍      |  416MB / 1.23GB,   ???B/s  
+
+  ...ex/c2_reg_train_c5_r3.npy:  46%|████▋     |  568MB / 1.23GB            [A[AProcessing Files (0 / 1)      :  46%|████▋     |  568MB / 1.23GB, 54.4MB/s  
+
+  ...ex/c2_reg_train_c5_r3.npy:  57%|█████▋    |  704MB / 1.23GB            [A[AProcessing Files (0 / 1)      :  57%|█████▋    |  704MB / 1.23GB, 66.3MB/s  
+
+  ...ex/c2_reg_train_c5_r3.npy:  69%|██████▉   |  848MB / 1.23GB            [A[AProcessing Files (0 / 1)      :  69%|██████▉   |  848MB / 1.23GB, 78.6MB/s  
+
+  ...ex/c2_reg_train_c5_r3.npy:  80%|███████▉  |  976MB / 1.23GB            [A[AProcessing Files (0 / 1)      :  80%|███████▉  |  976MB / 1.23GB, 89.0MB/s  
+
+  ...ex/c2_reg_train_c5_r3.npy:  91%|█████████▏| 1.12GB / 1.23GB            [A[AProcessing Files (0 / 1)      :  91%|█████████▏| 1.12GB / 1.23GB,  101MB/s  
+
+  ...ex/c2_reg_train_c5_r3.npy: 100%|██████████| 1.23GB / 1.23GB            [A[AProcessing Files (1 / 1)      : 100%|██████████| 1.23GB / 1.23GB,  108MB/s  Processing Files (1 / 1)      : 100%|██████████| 1.23GB / 1.23GB,  108MB/s  
+New Data Upload               : |          |  0.00B /  0.00B,  0.00B/s  
+  ...ex/c2_reg_train_c5_r3.npy: 100%|██████████| 1.23GB / 1.23GB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/c2_reg_train_c5_r3.npy
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...ex/c2_cls_train_c5_r2.npy:  37%|███▋      |  224MB /  613MB            [A[A
+
+  ...ex/c2_cls_train_c5_r2.npy:  37%|███▋      |  224MB /  613MB            [A[AProcessing Files (0 / 1)      :  37%|███▋      |  224MB /  613MB,   ???B/s  
+
+  ...ex/c2_cls_train_c5_r2.npy:  70%|███████   |  432MB /  613MB            [A[AProcessing Files (0 / 1)      :  70%|███████   |  432MB /  613MB,   ???B/s  
+
+  ...ex/c2_cls_train_c5_r2.npy:  98%|█████████▊|  600MB /  613MB            [A[AProcessing Files (0 / 1)      :  98%|█████████▊|  600MB /  613MB, 57.6MB/s  
+
+  ...ex/c2_cls_train_c5_r2.npy: 100%|██████████|  613MB /  613MB            [A[AProcessing Files (1 / 1)      : 100%|██████████|  613MB /  613MB, 57.5MB/s  Processing Files (1 / 1)      : 100%|██████████|  613MB /  613MB, 57.5MB/s  
+New Data Upload               : |          |  0.00B /  0.00B,  0.00B/s  
+  ...ex/c2_cls_train_c5_r2.npy: 100%|██████████|  613MB /  613MB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/c2_cls_train_c5_r2.npy
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...ex/c2_reg_train_c5_r1.npy:  19%|█▉        |  232MB / 1.23GB            [A[A
+
+  ...ex/c2_reg_train_c5_r1.npy:  19%|█▉        |  232MB / 1.23GB            [A[AProcessing Files (0 / 1)      :  19%|█▉        |  232MB / 1.23GB,   ???B/s  
+
+  ...ex/c2_reg_train_c5_r1.npy:  35%|███▍      |  424MB / 1.23GB            [A[AProcessing Files (0 / 1)      :  35%|███▍      |  424MB / 1.23GB,   ???B/s  
+
+  ...ex/c2_reg_train_c5_r1.npy:  46%|████▋     |  568MB / 1.23GB            [A[AProcessing Files (0 / 1)      :  46%|████▋     |  568MB / 1.23GB, 54.4MB/s  
+
+  ...ex/c2_reg_train_c5_r1.npy:  61%|██████    |  744MB / 1.23GB            [A[AProcessing Files (0 / 1)      :  61%|██████    |  744MB / 1.23GB, 70.2MB/s  
+
+  ...ex/c2_reg_train_c5_r1.npy:  72%|███████▏  |  880MB / 1.23GB            [A[AProcessing Files (0 / 1)      :  72%|███████▏  |  880MB / 1.23GB, 81.6MB/s  
+
+  ...ex/c2_reg_train_c5_r1.npy:  83%|████████▎ | 1.02GB / 1.23GB            [A[AProcessing Files (0 / 1)      :  83%|████████▎ | 1.02GB / 1.23GB, 92.7MB/s  
+
+  ...ex/c2_reg_train_c5_r1.npy:  93%|█████████▎| 1.14GB / 1.23GB            [A[AProcessing Files (0 / 1)      :  93%|█████████▎| 1.14GB / 1.23GB,  103MB/s  
+
+  ...ex/c2_reg_train_c5_r1.npy: 100%|██████████| 1.23GB / 1.23GB            [A[AProcessing Files (1 / 1)      : 100%|██████████| 1.23GB / 1.23GB,  108MB/s  Processing Files (1 / 1)      : 100%|██████████| 1.23GB / 1.23GB,  108MB/s  
+New Data Upload               : |          |  0.00B /  0.00B,  0.00B/s  
+  ...ex/c2_reg_train_c5_r1.npy: 100%|██████████| 1.23GB / 1.23GB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/c2_reg_train_c5_r1.npy
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...2_gateids_train_c5_r3.npy: 100%|██████████| 30.0MB / 30.0MB            [A[A
+
+  ...2_gateids_train_c5_r3.npy: 100%|██████████| 30.0MB / 30.0MB            [A[AProcessing Files (1 / 1)      : 100%|██████████| 30.0MB / 30.0MB,   ???B/s  Processing Files (1 / 1)      : 100%|██████████| 30.0MB / 30.0MB,   ???B/s  
+New Data Upload               : |          |  0.00B /  0.00B,   ???B/s  
+  ...2_gateids_train_c5_r3.npy: 100%|██████████| 30.0MB / 30.0MB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/c2_gateids_train_c5_r3.npy
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...2_gateids_train_c5_r1.npy: 100%|██████████| 30.0MB / 30.0MB            [A[A
+
+  ...2_gateids_train_c5_r1.npy: 100%|██████████| 30.0MB / 30.0MB            [A[AProcessing Files (1 / 1)      : 100%|██████████| 30.0MB / 30.0MB,   ???B/s  Processing Files (1 / 1)      : 100%|██████████| 30.0MB / 30.0MB,   ???B/s  
+New Data Upload               : |          |  0.00B /  0.00B,   ???B/s  
+  ...2_gateids_train_c5_r1.npy: 100%|██████████| 30.0MB / 30.0MB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/c2_gateids_train_c5_r1.npy
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  .../c2_gatep_train_c5_r3.npy: 100%|██████████| 30.0MB / 30.0MB            [A[A
+
+  .../c2_gatep_train_c5_r3.npy: 100%|██████████| 30.0MB / 30.0MB            [A[AProcessing Files (1 / 1)      : 100%|██████████| 30.0MB / 30.0MB,   ???B/s  Processing Files (1 / 1)      : 100%|██████████| 30.0MB / 30.0MB,   ???B/s  
+New Data Upload               : |          |  0.00B /  0.00B,   ???B/s  
+  .../c2_gatep_train_c5_r3.npy: 100%|██████████| 30.0MB / 30.0MB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/c2_gatep_train_c5_r3.npy
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...x/c2_mean_train_c5_r2.npy:  37%|███▋      |  224MB /  613MB            [A[A
+
+  ...x/c2_mean_train_c5_r2.npy:  37%|███▋      |  224MB /  613MB            [A[AProcessing Files (0 / 1)      :  37%|███▋      |  224MB /  613MB,   ???B/s  
+
+  ...x/c2_mean_train_c5_r2.npy:  65%|██████▌   |  400MB /  613MB            [A[AProcessing Files (0 / 1)      :  65%|██████▌   |  400MB /  613MB,   ???B/s  
+
+  ...x/c2_mean_train_c5_r2.npy:  90%|████████▉ |  552MB /  613MB            [A[AProcessing Files (0 / 1)      :  90%|████████▉ |  552MB /  613MB, 52.9MB/s  
+
+  ...x/c2_mean_train_c5_r2.npy: 100%|██████████|  613MB /  613MB            [A[AProcessing Files (1 / 1)      : 100%|██████████|  613MB /  613MB, 57.6MB/s  Processing Files (1 / 1)      : 100%|██████████|  613MB /  613MB, 57.6MB/s  
+New Data Upload               : |          |  0.00B /  0.00B,  0.00B/s  
+  ...x/c2_mean_train_c5_r2.npy: 100%|██████████|  613MB /  613MB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/c2_mean_train_c5_r2.npy
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  .../c2_gatep_train_c5_r1.npy: 100%|██████████| 30.0MB / 30.0MB            [A[A
+
+  .../c2_gatep_train_c5_r1.npy: 100%|██████████| 30.0MB / 30.0MB            [A[AProcessing Files (1 / 1)      : 100%|██████████| 30.0MB / 30.0MB,   ???B/s  Processing Files (1 / 1)      : 100%|██████████| 30.0MB / 30.0MB,   ???B/s  
+New Data Upload               : |          |  0.00B /  0.00B,   ???B/s  
+  .../c2_gatep_train_c5_r1.npy: 100%|██████████| 30.0MB / 30.0MB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/c2_gatep_train_c5_r1.npy
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...ex/c2_reg_train_c5_r2.npy:  19%|█▉        |  232MB / 1.23GB            [A[A
+
+  ...ex/c2_reg_train_c5_r2.npy:  19%|█▉        |  232MB / 1.23GB            [A[AProcessing Files (0 / 1)      :  19%|█▉        |  232MB / 1.23GB,   ???B/s  
+
+  ...ex/c2_reg_train_c5_r2.npy:  35%|███▌      |  432MB / 1.23GB            [A[AProcessing Files (0 / 1)      :  35%|███▌      |  432MB / 1.23GB,   ???B/s  
+
+  ...ex/c2_reg_train_c5_r2.npy:  50%|█████     |  616MB / 1.23GB            [A[AProcessing Files (0 / 1)      :  50%|█████     |  616MB / 1.23GB, 59.1MB/s  
+
+  ...ex/c2_reg_train_c5_r2.npy:  62%|██████▏   |  760MB / 1.23GB            [A[AProcessing Files (0 / 1)      :  62%|██████▏   |  760MB / 1.23GB, 71.6MB/s  
+
+  ...ex/c2_reg_train_c5_r2.npy:  73%|███████▎  |  896MB / 1.23GB            [A[AProcessing Files (0 / 1)      :  73%|███████▎  |  896MB / 1.23GB, 83.0MB/s  
+
+  ...ex/c2_reg_train_c5_r2.npy:  85%|████████▍ | 1.04GB / 1.23GB            [A[AProcessing Files (0 / 1)      :  85%|████████▍ | 1.04GB / 1.23GB, 94.8MB/s  
+
+  ...ex/c2_reg_train_c5_r2.npy:  96%|█████████▌| 1.18GB / 1.23GB            [A[AProcessing Files (0 / 1)      :  96%|█████████▌| 1.18GB / 1.23GB,  105MB/s  
+
+  ...ex/c2_reg_train_c5_r2.npy: 100%|██████████| 1.23GB / 1.23GB            [A[AProcessing Files (1 / 1)      : 100%|██████████| 1.23GB / 1.23GB,  108MB/s  Processing Files (1 / 1)      : 100%|██████████| 1.23GB / 1.23GB,  108MB/s  
+New Data Upload               : |          |  0.00B /  0.00B,  0.00B/s  
+  ...ex/c2_reg_train_c5_r2.npy: 100%|██████████| 1.23GB / 1.23GB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/c2_reg_train_c5_r2.npy
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...2_gateids_train_c5_r2.npy: 100%|██████████| 30.0MB / 30.0MB            [A[A
+
+  ...2_gateids_train_c5_r2.npy: 100%|██████████| 30.0MB / 30.0MB            [A[AProcessing Files (1 / 1)      : 100%|██████████| 30.0MB / 30.0MB,   ???B/s  Processing Files (1 / 1)      : 100%|██████████| 30.0MB / 30.0MB,   ???B/s  
+New Data Upload               : |          |  0.00B /  0.00B,   ???B/s  
+  ...2_gateids_train_c5_r2.npy: 100%|██████████| 30.0MB / 30.0MB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/c2_gateids_train_c5_r2.npy
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  .../c2_gatep_train_c5_r2.npy: 100%|██████████| 30.0MB / 30.0MB            [A[A
+
+  .../c2_gatep_train_c5_r2.npy: 100%|██████████| 30.0MB / 30.0MB            [A[AProcessing Files (1 / 1)      : 100%|██████████| 30.0MB / 30.0MB,   ???B/s  Processing Files (1 / 1)      : 100%|██████████| 30.0MB / 30.0MB,   ???B/s  
+New Data Upload               : |          |  0.00B /  0.00B,   ???B/s  
+  .../c2_gatep_train_c5_r2.npy: 100%|██████████| 30.0MB / 30.0MB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/c2_gatep_train_c5_r2.npy
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...ex/c2_cls_train_c5_r0.npy:  30%|██▉       |  184MB /  613MB            [A[A
+
+  ...ex/c2_cls_train_c5_r0.npy:  30%|██▉       |  184MB /  613MB            [A[AProcessing Files (0 / 1)      :  30%|██▉       |  184MB /  613MB,   ???B/s  
+
+  ...ex/c2_cls_train_c5_r0.npy:  65%|██████▌   |  400MB /  613MB            [A[AProcessing Files (0 / 1)      :  65%|██████▌   |  400MB /  613MB,   ???B/s  
+
+  ...ex/c2_cls_train_c5_r0.npy: 100%|██████████|  613MB /  613MB            [A[AProcessing Files (1 / 1)      : 100%|██████████|  613MB /  613MB, 59.0MB/s  Processing Files (1 / 1)      : 100%|██████████|  613MB /  613MB, 59.0MB/s  
+New Data Upload               : |          |  0.00B /  0.00B,  0.00B/s  
+  ...ex/c2_cls_train_c5_r0.npy: 100%|██████████|  613MB /  613MB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/c2_cls_train_c5_r0.npy
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...x/c2_mean_train_c5_r0.npy:  35%|███▌      |  216MB /  613MB            [A[A
+
+  ...x/c2_mean_train_c5_r0.npy:  35%|███▌      |  216MB /  613MB            [A[AProcessing Files (0 / 1)      :  35%|███▌      |  216MB /  613MB,   ???B/s  
+
+  ...x/c2_mean_train_c5_r0.npy:  68%|██████▊   |  416MB /  613MB            [A[AProcessing Files (0 / 1)      :  68%|██████▊   |  416MB /  613MB,   ???B/s  
+
+  ...x/c2_mean_train_c5_r0.npy:  91%|█████████▏|  560MB /  613MB            [A[AProcessing Files (0 / 1)      :  91%|█████████▏|  560MB /  613MB, 53.7MB/s  
+
+  ...x/c2_mean_train_c5_r0.npy: 100%|██████████|  613MB /  613MB            [A[AProcessing Files (1 / 1)      : 100%|██████████|  613MB /  613MB, 57.6MB/s  Processing Files (1 / 1)      : 100%|██████████|  613MB /  613MB, 57.6MB/s  
+New Data Upload               : |          |  0.00B /  0.00B,  0.00B/s  
+  ...x/c2_mean_train_c5_r0.npy: 100%|██████████|  613MB /  613MB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/c2_mean_train_c5_r0.npy
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...ex/c2_reg_train_c5_r0.npy:  20%|█▉        |  240MB / 1.23GB            [A[A
+
+  ...ex/c2_reg_train_c5_r0.npy:  20%|█▉        |  240MB / 1.23GB            [A[AProcessing Files (0 / 1)      :  20%|█▉        |  240MB / 1.23GB,   ???B/s  
+
+  ...ex/c2_reg_train_c5_r0.npy:  41%|████      |  504MB / 1.23GB            [A[AProcessing Files (0 / 1)      :  41%|████      |  504MB / 1.23GB,   ???B/s  
+
+  ...ex/c2_reg_train_c5_r0.npy:  58%|█████▊    |  712MB / 1.23GB            [A[AProcessing Files (0 / 1)      :  58%|█████▊    |  712MB / 1.23GB, 68.3MB/s  
+
+  ...ex/c2_reg_train_c5_r0.npy:  68%|██████▊   |  840MB / 1.23GB            [A[AProcessing Files (0 / 1)      :  68%|██████▊   |  840MB / 1.23GB, 79.1MB/s  
+
+  ...ex/c2_reg_train_c5_r0.npy:  79%|███████▉  |  968MB / 1.23GB            [A[AProcessing Files (0 / 1)      :  79%|███████▉  |  968MB / 1.23GB, 89.5MB/s  
+
+  ...ex/c2_reg_train_c5_r0.npy:  90%|████████▉ | 1.10GB / 1.23GB            [A[AProcessing Files (0 / 1)      :  90%|████████▉ | 1.10GB / 1.23GB,  100MB/s  
+
+  ...ex/c2_reg_train_c5_r0.npy: 100%|██████████| 1.23GB / 1.23GB            [A[AProcessing Files (1 / 1)      : 100%|██████████| 1.23GB / 1.23GB,  110MB/s  Processing Files (1 / 1)      : 100%|██████████| 1.23GB / 1.23GB,  110MB/s  
+New Data Upload               : |          |  0.00B /  0.00B,  0.00B/s  
+  ...ex/c2_reg_train_c5_r0.npy: 100%|██████████| 1.23GB / 1.23GB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/c2_reg_train_c5_r0.npy
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...2_gateids_train_c5_r0.npy: 100%|██████████| 30.0MB / 30.0MB            [A[A
+
+  ...2_gateids_train_c5_r0.npy: 100%|██████████| 30.0MB / 30.0MB            [A[AProcessing Files (1 / 1)      : 100%|██████████| 30.0MB / 30.0MB,   ???B/s  Processing Files (1 / 1)      : 100%|██████████| 30.0MB / 30.0MB,   ???B/s  
+New Data Upload               : |          |  0.00B /  0.00B,   ???B/s  
+  ...2_gateids_train_c5_r0.npy: 100%|██████████| 30.0MB / 30.0MB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/c2_gateids_train_c5_r0.npy
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  .../c2_gatep_train_c5_r0.npy: 100%|██████████| 30.0MB / 30.0MB            [A[A
+
+  .../c2_gatep_train_c5_r0.npy: 100%|██████████| 30.0MB / 30.0MB            [A[AProcessing Files (1 / 1)      : 100%|██████████| 30.0MB / 30.0MB,   ???B/s  Processing Files (1 / 1)      : 100%|██████████| 30.0MB / 30.0MB,   ???B/s  
+New Data Upload               : |          |  0.00B /  0.00B,   ???B/s  
+  .../c2_gatep_train_c5_r0.npy: 100%|██████████| 30.0MB / 30.0MB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/c2_gatep_train_c5_r0.npy
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...ndex/c2_cls_val_c5_r0.npy: 100%|██████████| 1.54MB / 1.54MB            [A[A
+
+  ...ndex/c2_cls_val_c5_r0.npy: 100%|██████████| 1.54MB / 1.54MB            [A[AProcessing Files (1 / 1)      : 100%|██████████| 1.54MB / 1.54MB,   ???B/s  Processing Files (1 / 1)      : 100%|██████████| 1.54MB / 1.54MB,   ???B/s  
+New Data Upload               : |          |  0.00B /  0.00B,   ???B/s  
+  ...ndex/c2_cls_val_c5_r0.npy: 100%|██████████| 1.54MB / 1.54MB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/c2_cls_val_c5_r0.npy
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...dex/c2_mean_val_c5_r0.npy: 100%|██████████| 1.54MB / 1.54MB            [A[A
+
+  ...dex/c2_mean_val_c5_r0.npy: 100%|██████████| 1.54MB / 1.54MB            [A[AProcessing Files (1 / 1)      : 100%|██████████| 1.54MB / 1.54MB,   ???B/s  Processing Files (1 / 1)      : 100%|██████████| 1.54MB / 1.54MB,   ???B/s  
+New Data Upload               : |          |  0.00B /  0.00B,   ???B/s  
+  ...dex/c2_mean_val_c5_r0.npy: 100%|██████████| 1.54MB / 1.54MB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/c2_mean_val_c5_r0.npy
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...ndex/c2_reg_val_c5_r0.npy: 100%|██████████| 3.07MB / 3.07MB            [A[A
+
+  ...ndex/c2_reg_val_c5_r0.npy: 100%|██████████| 3.07MB / 3.07MB            [A[AProcessing Files (1 / 1)      : 100%|██████████| 3.07MB / 3.07MB,   ???B/s  Processing Files (1 / 1)      : 100%|██████████| 3.07MB / 3.07MB,   ???B/s  
+New Data Upload               : |          |  0.00B /  0.00B,   ???B/s  
+  ...ndex/c2_reg_val_c5_r0.npy: 100%|██████████| 3.07MB / 3.07MB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/c2_reg_val_c5_r0.npy
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...x/c2_logits_val_c5_r0.npy: 100%|██████████| 7.50MB / 7.50MB            [A[A
+
+  ...x/c2_logits_val_c5_r0.npy: 100%|██████████| 7.50MB / 7.50MB            [A[AProcessing Files (1 / 1)      : 100%|██████████| 7.50MB / 7.50MB,   ???B/s  Processing Files (1 / 1)      : 100%|██████████| 7.50MB / 7.50MB,   ???B/s  
+New Data Upload               : |          |  0.00B /  0.00B,   ???B/s  
+  ...x/c2_logits_val_c5_r0.npy: 100%|██████████| 7.50MB / 7.50MB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/c2_logits_val_c5_r0.npy
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...ndex/c2_cls_val_c5_r3.npy: 100%|██████████| 1.53MB / 1.53MB            [A[A
+
+  ...ndex/c2_cls_val_c5_r3.npy: 100%|██████████| 1.53MB / 1.53MB            [A[AProcessing Files (1 / 1)      : 100%|██████████| 1.53MB / 1.53MB,   ???B/s  Processing Files (1 / 1)      : 100%|██████████| 1.53MB / 1.53MB,   ???B/s  
+New Data Upload               : |          |  0.00B /  0.00B,   ???B/s  
+  ...ndex/c2_cls_val_c5_r3.npy: 100%|██████████| 1.53MB / 1.53MB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/c2_cls_val_c5_r3.npy
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...dex/c2_mean_val_c5_r3.npy: 100%|██████████| 1.53MB / 1.53MB            [A[A
+
+  ...dex/c2_mean_val_c5_r3.npy: 100%|██████████| 1.53MB / 1.53MB            [A[AProcessing Files (1 / 1)      : 100%|██████████| 1.53MB / 1.53MB,   ???B/s  Processing Files (1 / 1)      : 100%|██████████| 1.53MB / 1.53MB,   ???B/s  
+New Data Upload               : |          |  0.00B /  0.00B,   ???B/s  
+  ...dex/c2_mean_val_c5_r3.npy: 100%|██████████| 1.53MB / 1.53MB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/c2_mean_val_c5_r3.npy
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...ndex/c2_reg_val_c5_r3.npy: 100%|██████████| 3.06MB / 3.06MB            [A[A
+
+  ...ndex/c2_reg_val_c5_r3.npy: 100%|██████████| 3.06MB / 3.06MB            [A[AProcessing Files (1 / 1)      : 100%|██████████| 3.06MB / 3.06MB,   ???B/s  Processing Files (1 / 1)      : 100%|██████████| 3.06MB / 3.06MB,   ???B/s  
+New Data Upload               : |          |  0.00B /  0.00B,   ???B/s  
+  ...ndex/c2_reg_val_c5_r3.npy: 100%|██████████| 3.06MB / 3.06MB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/c2_reg_val_c5_r3.npy
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...x/c2_logits_val_c5_r3.npy: 100%|██████████| 7.48MB / 7.48MB            [A[A
+
+  ...x/c2_logits_val_c5_r3.npy: 100%|██████████| 7.48MB / 7.48MB            [A[AProcessing Files (1 / 1)      : 100%|██████████| 7.48MB / 7.48MB,   ???B/s  Processing Files (1 / 1)      : 100%|██████████| 7.48MB / 7.48MB,   ???B/s  
+New Data Upload               : |          |  0.00B /  0.00B,   ???B/s  
+  ...x/c2_logits_val_c5_r3.npy: 100%|██████████| 7.48MB / 7.48MB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/c2_logits_val_c5_r3.npy
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...ndex/c2_cls_val_c5_r1.npy: 100%|██████████| 1.54MB / 1.54MB            [A[A
+
+  ...ndex/c2_cls_val_c5_r1.npy: 100%|██████████| 1.54MB / 1.54MB            [A[AProcessing Files (1 / 1)      : 100%|██████████| 1.54MB / 1.54MB,   ???B/s  Processing Files (1 / 1)      : 100%|██████████| 1.54MB / 1.54MB,   ???B/s  
+New Data Upload               : |          |  0.00B /  0.00B,   ???B/s  
+  ...ndex/c2_cls_val_c5_r1.npy: 100%|██████████| 1.54MB / 1.54MB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/c2_cls_val_c5_r1.npy
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...dex/c2_mean_val_c5_r1.npy: 100%|██████████| 1.54MB / 1.54MB            [A[A
+
+  ...dex/c2_mean_val_c5_r1.npy: 100%|██████████| 1.54MB / 1.54MB            [A[AProcessing Files (1 / 1)      : 100%|██████████| 1.54MB / 1.54MB,   ???B/s  Processing Files (1 / 1)      : 100%|██████████| 1.54MB / 1.54MB,   ???B/s  
+New Data Upload               : |          |  0.00B /  0.00B,   ???B/s  
+  ...dex/c2_mean_val_c5_r1.npy: 100%|██████████| 1.54MB / 1.54MB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/c2_mean_val_c5_r1.npy
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...ndex/c2_reg_val_c5_r1.npy: 100%|██████████| 3.07MB / 3.07MB            [A[A
+
+  ...ndex/c2_reg_val_c5_r1.npy: 100%|██████████| 3.07MB / 3.07MB            [A[AProcessing Files (1 / 1)      : 100%|██████████| 3.07MB / 3.07MB,   ???B/s  Processing Files (1 / 1)      : 100%|██████████| 3.07MB / 3.07MB,   ???B/s  
+New Data Upload               : |          |  0.00B /  0.00B,   ???B/s  
+  ...ndex/c2_reg_val_c5_r1.npy: 100%|██████████| 3.07MB / 3.07MB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/c2_reg_val_c5_r1.npy
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...x/c2_logits_val_c5_r1.npy: 100%|██████████| 7.50MB / 7.50MB            [A[A
+
+  ...x/c2_logits_val_c5_r1.npy: 100%|██████████| 7.50MB / 7.50MB            [A[AProcessing Files (1 / 1)      : 100%|██████████| 7.50MB / 7.50MB,   ???B/s  Processing Files (1 / 1)      : 100%|██████████| 7.50MB / 7.50MB,   ???B/s  
+New Data Upload               : |          |  0.00B /  0.00B,   ???B/s  
+  ...x/c2_logits_val_c5_r1.npy: 100%|██████████| 7.50MB / 7.50MB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/c2_logits_val_c5_r1.npy
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...ndex/c2_cls_val_c5_r2.npy: 100%|██████████| 1.54MB / 1.54MB            [A[A
+
+  ...ndex/c2_cls_val_c5_r2.npy: 100%|██████████| 1.54MB / 1.54MB            [A[AProcessing Files (1 / 1)      : 100%|██████████| 1.54MB / 1.54MB,   ???B/s  Processing Files (1 / 1)      : 100%|██████████| 1.54MB / 1.54MB,   ???B/s  
+New Data Upload               : |          |  0.00B /  0.00B,   ???B/s  
+  ...ndex/c2_cls_val_c5_r2.npy: 100%|██████████| 1.54MB / 1.54MB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/c2_cls_val_c5_r2.npy
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...dex/c2_mean_val_c5_r2.npy: 100%|██████████| 1.54MB / 1.54MB            [A[A
+
+  ...dex/c2_mean_val_c5_r2.npy: 100%|██████████| 1.54MB / 1.54MB            [A[AProcessing Files (1 / 1)      : 100%|██████████| 1.54MB / 1.54MB,   ???B/s  Processing Files (1 / 1)      : 100%|██████████| 1.54MB / 1.54MB,   ???B/s  
+New Data Upload               : |          |  0.00B /  0.00B,   ???B/s  
+  ...dex/c2_mean_val_c5_r2.npy: 100%|██████████| 1.54MB / 1.54MB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/c2_mean_val_c5_r2.npy
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...ndex/c2_reg_val_c5_r2.npy: 100%|██████████| 3.07MB / 3.07MB            [A[A
+
+  ...ndex/c2_reg_val_c5_r2.npy: 100%|██████████| 3.07MB / 3.07MB            [A[AProcessing Files (1 / 1)      : 100%|██████████| 3.07MB / 3.07MB,   ???B/s  Processing Files (1 / 1)      : 100%|██████████| 3.07MB / 3.07MB,   ???B/s  
+New Data Upload               : |          |  0.00B /  0.00B,   ???B/s  
+  ...ndex/c2_reg_val_c5_r2.npy: 100%|██████████| 3.07MB / 3.07MB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/c2_reg_val_c5_r2.npy
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...x/c2_logits_val_c5_r2.npy: 100%|██████████| 7.50MB / 7.50MB            [A[A
+
+  ...x/c2_logits_val_c5_r2.npy: 100%|██████████| 7.50MB / 7.50MB            [A[AProcessing Files (1 / 1)      : 100%|██████████| 7.50MB / 7.50MB,   ???B/s  Processing Files (1 / 1)      : 100%|██████████| 7.50MB / 7.50MB,   ???B/s  
+New Data Upload               : |          |  0.00B /  0.00B,   ???B/s  
+  ...x/c2_logits_val_c5_r2.npy: 100%|██████████| 7.50MB / 7.50MB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/c2_logits_val_c5_r2.npy
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...al_index/c5_ep_ids_r2.npy: 100%|██████████| 59.9MB / 59.9MB            [A[A
+
+  ...al_index/c5_ep_ids_r2.npy: 100%|██████████| 59.9MB / 59.9MB            [A[AProcessing Files (1 / 1)      : 100%|██████████| 59.9MB / 59.9MB,   ???B/s  Processing Files (1 / 1)      : 100%|██████████| 59.9MB / 59.9MB,   ???B/s  
+New Data Upload               : |          |  0.00B /  0.00B,   ???B/s  
+  ...al_index/c5_ep_ids_r2.npy: 100%|██████████| 59.9MB / 59.9MB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/c5_ep_ids_r2.npy
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...l_index/c5_ep_sims_r2.npy: 100%|██████████| 30.0MB / 30.0MB            [A[A
+
+  ...l_index/c5_ep_sims_r2.npy: 100%|██████████| 30.0MB / 30.0MB            [A[AProcessing Files (1 / 1)      : 100%|██████████| 30.0MB / 30.0MB,   ???B/s  Processing Files (1 / 1)      : 100%|██████████| 30.0MB / 30.0MB,   ???B/s  
+New Data Upload               : |          |  0.00B /  0.00B,   ???B/s  
+  ...l_index/c5_ep_sims_r2.npy: 100%|██████████| 30.0MB / 30.0MB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/c5_ep_sims_r2.npy
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...al_index/c5_ep_ids_r0.npy: 100%|██████████| 59.9MB / 59.9MB            [A[A
+
+  ...al_index/c5_ep_ids_r0.npy: 100%|██████████| 59.9MB / 59.9MB            [A[AProcessing Files (1 / 1)      : 100%|██████████| 59.9MB / 59.9MB,   ???B/s  Processing Files (1 / 1)      : 100%|██████████| 59.9MB / 59.9MB,   ???B/s  
+New Data Upload               : |          |  0.00B /  0.00B,   ???B/s  
+  ...al_index/c5_ep_ids_r0.npy: 100%|██████████| 59.9MB / 59.9MB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/c5_ep_ids_r0.npy
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...l_index/c5_ep_sims_r0.npy: 100%|██████████| 30.0MB / 30.0MB            [A[A
+
+  ...l_index/c5_ep_sims_r0.npy: 100%|██████████| 30.0MB / 30.0MB            [A[AProcessing Files (1 / 1)      : 100%|██████████| 30.0MB / 30.0MB,   ???B/s  Processing Files (1 / 1)      : 100%|██████████| 30.0MB / 30.0MB,   ???B/s  
+New Data Upload               : |          |  0.00B /  0.00B,   ???B/s  
+  ...l_index/c5_ep_sims_r0.npy: 100%|██████████| 30.0MB / 30.0MB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/c5_ep_sims_r0.npy
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...al_index/c5_ep_ids_r1.npy: 100%|██████████| 59.9MB / 59.9MB            [A[A
+
+  ...al_index/c5_ep_ids_r1.npy: 100%|██████████| 59.9MB / 59.9MB            [A[AProcessing Files (1 / 1)      : 100%|██████████| 59.9MB / 59.9MB,   ???B/s  Processing Files (1 / 1)      : 100%|██████████| 59.9MB / 59.9MB,   ???B/s  
+New Data Upload               : |          |  0.00B /  0.00B,   ???B/s  
+  ...al_index/c5_ep_ids_r1.npy: 100%|██████████| 59.9MB / 59.9MB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/c5_ep_ids_r1.npy
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...l_index/c5_ep_sims_r1.npy: 100%|██████████| 30.0MB / 30.0MB            [A[A
+
+  ...l_index/c5_ep_sims_r1.npy: 100%|██████████| 30.0MB / 30.0MB            [A[AProcessing Files (1 / 1)      : 100%|██████████| 30.0MB / 30.0MB,   ???B/s  Processing Files (1 / 1)      : 100%|██████████| 30.0MB / 30.0MB,   ???B/s  
+New Data Upload               : |          |  0.00B /  0.00B,   ???B/s  
+  ...l_index/c5_ep_sims_r1.npy: 100%|██████████| 30.0MB / 30.0MB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/c5_ep_sims_r1.npy
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...al_index/c5_ep_ids_r3.npy: 100%|██████████| 59.9MB / 59.9MB            [A[A
+
+  ...al_index/c5_ep_ids_r3.npy: 100%|██████████| 59.9MB / 59.9MB            [A[AProcessing Files (1 / 1)      : 100%|██████████| 59.9MB / 59.9MB,   ???B/s  Processing Files (1 / 1)      : 100%|██████████| 59.9MB / 59.9MB,   ???B/s  
+New Data Upload               : |          |  0.00B /  0.00B,   ???B/s  
+  ...al_index/c5_ep_ids_r3.npy: 100%|██████████| 59.9MB / 59.9MB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/c5_ep_ids_r3.npy
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...l_index/c5_ep_sims_r3.npy: 100%|██████████| 30.0MB / 30.0MB            [A[A
+
+  ...l_index/c5_ep_sims_r3.npy: 100%|██████████| 30.0MB / 30.0MB            [A[AProcessing Files (1 / 1)      : 100%|██████████| 30.0MB / 30.0MB,   ???B/s  Processing Files (1 / 1)      : 100%|██████████| 30.0MB / 30.0MB,   ???B/s  
+New Data Upload               : |          |  0.00B /  0.00B,   ???B/s  
+  ...l_index/c5_ep_sims_r3.npy: 100%|██████████| 30.0MB / 30.0MB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/c5_ep_sims_r3.npy
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...eval_index/geo5_cls_c5.pt:   3%|▎         |  553kB / 16.8MB            [A[A
+
+  ...eval_index/geo5_cls_c5.pt:   3%|▎         |  553kB / 16.8MB            [A[AProcessing Files (0 / 1)      :   3%|▎         |  553kB / 16.8MB, 54.1kB/s  
+New Data Upload               :   3%|▎         |  553kB / 16.8MB, 54.1kB/s  [A
+
+  ...eval_index/geo5_cls_c5.pt:  10%|▉         | 1.66MB / 16.8MB            [A[AProcessing Files (0 / 1)      :  10%|▉         | 1.66MB / 16.8MB,  158kB/s  
+New Data Upload               :  10%|▉         | 1.66MB / 16.8MB,  158kB/s  [A
+
+  ...eval_index/geo5_cls_c5.pt:  30%|██▉       | 4.98MB / 16.8MB            [A[AProcessing Files (0 / 1)      :  30%|██▉       | 4.98MB / 16.8MB,  472kB/s  
+New Data Upload               :  30%|██▉       | 4.98MB / 16.8MB,  472kB/s  [A
+
+  ...eval_index/geo5_cls_c5.pt:  63%|██████▎   | 10.5MB / 16.8MB            [A[AProcessing Files (0 / 1)      :  63%|██████▎   | 10.5MB / 16.8MB,  987kB/s  
+New Data Upload               :  63%|██████▎   | 10.5MB / 16.8MB,  987kB/s  [A
+
+  ...eval_index/geo5_cls_c5.pt:  99%|█████████▉| 16.6MB / 16.8MB            [A[AProcessing Files (0 / 1)      :  99%|█████████▉| 16.6MB / 16.8MB, 1.54MB/s  
+New Data Upload               :  99%|█████████▉| 16.6MB / 16.8MB, 1.54MB/s  [A
+
+  ...eval_index/geo5_cls_c5.pt: 100%|██████████| 16.8MB / 16.8MB            [A[AProcessing Files (1 / 1)      : 100%|██████████| 16.8MB / 16.8MB, 1.49MB/s  
+New Data Upload               : 100%|██████████| 16.8MB / 16.8MB, 1.49MB/s  [AProcessing Files (1 / 1)      : 100%|██████████| 16.8MB / 16.8MB, 1.49MB/s  
+New Data Upload               : 100%|██████████| 16.8MB / 16.8MB, 1.49MB/s  
+  ...eval_index/geo5_cls_c5.pt: 100%|██████████| 16.8MB / 16.8MB            
+up retrieval_index/geo5_cls_c5.pt
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...val_index/geo10_cls_c5.pt:  23%|██▎       | 3.86MB / 16.8MB            [A[A
+
+  ...val_index/geo10_cls_c5.pt:  23%|██▎       | 3.86MB / 16.8MB            [A[AProcessing Files (0 / 1)      :  23%|██▎       | 3.86MB / 16.8MB,   ???B/s  
+New Data Upload               :  23%|██▎       | 3.86MB / 16.8MB,   ???B/s  [A
+
+  ...val_index/geo10_cls_c5.pt:  33%|███▎      | 5.52MB / 16.8MB            [A[AProcessing Files (0 / 1)      :  33%|███▎      | 5.52MB / 16.8MB,  526kB/s  
+New Data Upload               :  33%|███▎      | 5.52MB / 16.8MB,  526kB/s  [A
+
+  ...val_index/geo10_cls_c5.pt:  69%|██████▉   | 11.6MB / 16.8MB            [A[AProcessing Files (0 / 1)      :  69%|██████▉   | 11.6MB / 16.8MB, 1.10MB/s  
+New Data Upload               :  69%|██████▉   | 11.6MB / 16.8MB, 1.10MB/s  [A
+
+  ...val_index/geo10_cls_c5.pt:  98%|█████████▊| 16.5MB / 16.8MB            [A[AProcessing Files (0 / 1)      :  98%|█████████▊| 16.5MB / 16.8MB, 1.55MB/s  
+New Data Upload               :  98%|█████████▊| 16.5MB / 16.8MB, 1.55MB/s  [A
+
+  ...val_index/geo10_cls_c5.pt: 100%|██████████| 16.8MB / 16.8MB            [A[AProcessing Files (1 / 1)      : 100%|██████████| 16.8MB / 16.8MB, 1.50MB/s  
+New Data Upload               : 100%|██████████| 16.8MB / 16.8MB, 1.50MB/s  [AProcessing Files (1 / 1)      : 100%|██████████| 16.8MB / 16.8MB, 1.50MB/s  
+New Data Upload               : 100%|██████████| 16.8MB / 16.8MB, 1.50MB/s  
+  ...val_index/geo10_cls_c5.pt: 100%|██████████| 16.8MB / 16.8MB            
+up retrieval_index/geo10_cls_c5.pt
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...val_index/geo25_cls_c5.pt:  23%|██▎       | 3.86MB / 16.8MB            [A[A
+
+  ...val_index/geo25_cls_c5.pt:  23%|██▎       | 3.86MB / 16.8MB            [A[AProcessing Files (0 / 1)      :  23%|██▎       | 3.86MB / 16.8MB,   ???B/s  
+New Data Upload               :  23%|██▎       | 3.86MB / 16.8MB,   ???B/s  [A
+
+  ...val_index/geo25_cls_c5.pt:  46%|████▌     | 7.71MB / 16.8MB            [A[AProcessing Files (0 / 1)      :  46%|████▌     | 7.71MB / 16.8MB,  736kB/s  
+New Data Upload               :  46%|████▌     | 7.71MB / 16.8MB,  736kB/s  [A
+
+  ...val_index/geo25_cls_c5.pt:  89%|████████▊ | 14.9MB / 16.8MB            [A[AProcessing Files (0 / 1)      :  89%|████████▊ | 14.9MB / 16.8MB, 1.41MB/s  
+New Data Upload               :  89%|████████▊ | 14.9MB / 16.8MB, 1.41MB/s  [A
+
+  ...val_index/geo25_cls_c5.pt:  98%|█████████▊| 16.5MB / 16.8MB            [A[AProcessing Files (0 / 1)      :  98%|█████████▊| 16.5MB / 16.8MB, 1.53MB/s  
+New Data Upload               :  98%|█████████▊| 16.5MB / 16.8MB, 1.53MB/s  [A
+
+  ...val_index/geo25_cls_c5.pt: 100%|██████████| 16.8MB / 16.8MB            [A[AProcessing Files (1 / 1)      : 100%|██████████| 16.8MB / 16.8MB, 1.52MB/s  
+New Data Upload               : 100%|██████████| 16.8MB / 16.8MB, 1.52MB/s  [AProcessing Files (1 / 1)      : 100%|██████████| 16.8MB / 16.8MB, 1.52MB/s  
+New Data Upload               : 100%|██████████| 16.8MB / 16.8MB, 1.52MB/s  
+  ...val_index/geo25_cls_c5.pt: 100%|██████████| 16.8MB / 16.8MB            
+up retrieval_index/geo25_cls_c5.pt
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...eval_index/c2_regproj.npz: 100%|██████████|  529kB /  529kB            [A[A
+
+  ...eval_index/c2_regproj.npz: 100%|██████████|  529kB /  529kB            [A[AProcessing Files (1 / 1)      : 100%|██████████|  529kB /  529kB,   ???B/s  
+New Data Upload               : |          |  0.00B /  0.00B,   ???B/s  
+  ...eval_index/c2_regproj.npz: 100%|██████████|  529kB /  529kB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/c2_regproj.npz
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...ieval_index/centroids.npz: 100%|██████████| 60.3kB / 60.3kB            [A[A
+
+  ...ieval_index/centroids.npz: 100%|██████████| 60.3kB / 60.3kB            [A[AProcessing Files (1 / 1)      : 100%|██████████| 60.3kB / 60.3kB,   ???B/s  
+New Data Upload               : |          |  0.00B /  0.00B,   ???B/s  
+  ...ieval_index/centroids.npz: 100%|██████████| 60.3kB / 60.3kB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/centroids.npz
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ...al_index/train_latlon.npz: 100%|██████████| 19.2MB / 19.2MB            [A[A
+
+  ...al_index/train_latlon.npz: 100%|██████████| 19.2MB / 19.2MB            [A[AProcessing Files (1 / 1)      : 100%|██████████| 19.2MB / 19.2MB,   ???B/s  Processing Files (1 / 1)      : 100%|██████████| 19.2MB / 19.2MB,   ???B/s  
+New Data Upload               : |          |  0.00B /  0.00B,   ???B/s  
+  ...al_index/train_latlon.npz: 100%|██████████| 19.2MB / 19.2MB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/train_latlon.npz
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  retrieval_index/val_meta.npz: 100%|██████████| 48.5kB / 48.5kB            [A[A
+
+  retrieval_index/val_meta.npz: 100%|██████████| 48.5kB / 48.5kB            [A[AProcessing Files (1 / 1)      : 100%|██████████| 48.5kB / 48.5kB,   ???B/s  
+New Data Upload               : |          |  0.00B /  0.00B,   ???B/s  
+  retrieval_index/val_meta.npz: 100%|██████████| 48.5kB / 48.5kB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/val_meta.npz
+Processing Files (0 / 0)      : |          |  0.00B /  0.00B            
+New Data Upload               : |          |  0.00B /  0.00B            [A
+
+  ..._index/val_patches_c5.npy:   7%|▋         |  256MB / 3.54GB            [A[A
+
+  ..._index/val_patches_c5.npy:   7%|▋         |  256MB / 3.54GB            [A[AProcessing Files (0 / 1)      :   7%|▋         |  256MB / 3.54GB,   ???B/s  
+
+  ..._index/val_patches_c5.npy:  14%|█▎        |  480MB / 3.54GB            [A[AProcessing Files (0 / 1)      :  14%|█▎        |  480MB / 3.54GB,   ???B/s  
+
+  ..._index/val_patches_c5.npy:  18%|█▊        |  624MB / 3.54GB            [A[AProcessing Files (0 / 1)      :  18%|█▊        |  624MB / 3.54GB, 59.8MB/s  
+
+  ..._index/val_patches_c5.npy:  22%|██▏       |  768MB / 3.54GB            [A[AProcessing Files (0 / 1)      :  22%|██▏       |  768MB / 3.54GB, 72.3MB/s  
+
+  ..._index/val_patches_c5.npy:  26%|██▌       |  904MB / 3.54GB            [A[AProcessing Files (0 / 1)      :  26%|██▌       |  904MB / 3.54GB, 83.7MB/s  
+
+  ..._index/val_patches_c5.npy:  29%|██▉       | 1.03GB / 3.54GB            [A[AProcessing Files (0 / 1)      :  29%|██▉       | 1.03GB / 3.54GB, 93.9MB/s  
+
+  ..._index/val_patches_c5.npy:  33%|███▎      | 1.17GB / 3.54GB            [A[AProcessing Files (0 / 1)      :  33%|███▎      | 1.17GB / 3.54GB,  105MB/s  
+
+  ..._index/val_patches_c5.npy:  37%|███▋      | 1.30GB / 3.54GB            [A[AProcessing Files (0 / 1)      :  37%|███▋      | 1.30GB / 3.54GB,  114MB/s  
+
+  ..._index/val_patches_c5.npy:  40%|████      | 1.42GB / 3.54GB            [A[AProcessing Files (0 / 1)      :  40%|████      | 1.42GB / 3.54GB,  124MB/s  
+
+  ..._index/val_patches_c5.npy:  44%|████▍     | 1.55GB / 3.54GB            [A[AProcessing Files (0 / 1)      :  44%|████▍     | 1.55GB / 3.54GB,  133MB/s  
+
+  ..._index/val_patches_c5.npy:  48%|████▊     | 1.68GB / 3.54GB            [A[AProcessing Files (0 / 1)      :  48%|████▊     | 1.68GB / 3.54GB,  141MB/s  
+
+  ..._index/val_patches_c5.npy:  51%|█████     | 1.81GB / 3.54GB            [A[AProcessing Files (0 / 1)      :  51%|█████     | 1.81GB / 3.54GB,  150MB/s  
+
+  ..._index/val_patches_c5.npy:  55%|█████▍    | 1.94GB / 3.54GB            [A[AProcessing Files (0 / 1)      :  55%|█████▍    | 1.94GB / 3.54GB,  159MB/s  
+
+  ..._index/val_patches_c5.npy:  59%|█████▉    | 2.09GB / 3.54GB            [A[AProcessing Files (0 / 1)      :  59%|█████▉    | 2.09GB / 3.54GB,  168MB/s  
+
+  ..._index/val_patches_c5.npy:  63%|██████▎   | 2.22GB / 3.54GB            [A[AProcessing Files (0 / 1)      :  63%|██████▎   | 2.22GB / 3.54GB,  177MB/s  
+
+  ..._index/val_patches_c5.npy:  67%|██████▋   | 2.36GB / 3.54GB            [A[AProcessing Files (0 / 1)      :  67%|██████▋   | 2.36GB / 3.54GB,  185MB/s  
+
+  ..._index/val_patches_c5.npy:  71%|███████   | 2.50GB / 3.54GB            [A[AProcessing Files (0 / 1)      :  71%|███████   | 2.50GB / 3.54GB,  193MB/s  
+
+  ..._index/val_patches_c5.npy:  75%|███████▍  | 2.64GB / 3.54GB            [A[AProcessing Files (0 / 1)      :  75%|███████▍  | 2.64GB / 3.54GB,  202MB/s  
+
+  ..._index/val_patches_c5.npy:  78%|███████▊  | 2.78GB / 3.54GB            [A[AProcessing Files (0 / 1)      :  78%|███████▊  | 2.78GB / 3.54GB,  209MB/s  
+
+  ..._index/val_patches_c5.npy:  83%|████████▎ | 2.92GB / 3.54GB            [A[AProcessing Files (0 / 1)      :  83%|████████▎ | 2.92GB / 3.54GB,  217MB/s  
+
+  ..._index/val_patches_c5.npy:  87%|████████▋ | 3.06GB / 3.54GB            [A[AProcessing Files (0 / 1)      :  87%|████████▋ | 3.06GB / 3.54GB,  225MB/s  
+
+  ..._index/val_patches_c5.npy:  91%|█████████ | 3.21GB / 3.54GB            [A[AProcessing Files (0 / 1)      :  91%|█████████ | 3.21GB / 3.54GB,  233MB/s  
+
+  ..._index/val_patches_c5.npy:  95%|█████████▍| 3.35GB / 3.54GB            [A[AProcessing Files (0 / 1)      :  95%|█████████▍| 3.35GB / 3.54GB,  240MB/s  
+
+  ..._index/val_patches_c5.npy:  99%|█████████▊| 3.49GB / 3.54GB            [A[AProcessing Files (0 / 1)      :  99%|█████████▊| 3.49GB / 3.54GB,  247MB/s  
+
+  ..._index/val_patches_c5.npy: 100%|██████████| 3.54GB / 3.54GB            [A[AProcessing Files (1 / 1)      : 100%|██████████| 3.54GB / 3.54GB,  246MB/s  Processing Files (1 / 1)      : 100%|██████████| 3.54GB / 3.54GB,  246MB/s  
+New Data Upload               : |          |  0.00B /  0.00B,  0.00B/s  
+  ..._index/val_patches_c5.npy: 100%|██████████| 3.54GB / 3.54GB            
+No files have been modified since last commit. Skipping to prevent empty commit.
+up retrieval_index/val_patches_c5.npy
+No files have been modified since last commit. Skipping to prevent empty commit.
+up cache_restore.log
+up c5.log
+No files have been modified since last commit. Skipping to prevent empty commit.
+up smoke_c5.log
+No files have been modified since last commit. Skipping to prevent empty commit.
+up pilot0.log
+No files have been modified since last commit. Skipping to prevent empty commit.
+up pilot1.log
+No files have been modified since last commit. Skipping to prevent empty commit.
+up train_c5.log
+No files have been modified since last commit. Skipping to prevent empty commit.
+up mirror_train.log
+No files have been modified since last commit. Skipping to prevent empty commit.
+up mirror_embed.log
+up mirror_cache.log
+up head_c5_5.log
+up head_c5_10.log
+up head_c5_25.log
+MIRROR DONE
+[19:47:51] C5 PIPELINE DONE

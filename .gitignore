@@ -28,3 +28,26 @@ dev/
 # full-run checkpoints/logs pulled from the box (big binaries; best ckpt lives on HF)
 run_full/
 run_smoke/
+
+# mobile: packed index + ONNX encoders + device logs are multi-GB build outputs
+mobile/assets_build/
+mobile/assets_build_4view/
+mobile/testdata/
+mobile/logs/
+mobile/screenshots/
+mobile/android/app/build/
+mobile/android/.gradle/
+mobile/android/app/src/main/assets/world.bin
+
+# the mobile app is its own repository (github.com/bednarjosef/neuroguessr-app)
+mobile/
+
+# big regenerable run artefacts: arrays/ckpts live on HF (josefbednar/neuroguessr-fullrun2-ckpt);
+# the *_index dirs are just symlinks into the local HF cache
+run_c3/
+run_full2/
+run_c4_index/
+run_c5_index/
+
+# Natural Earth shapefiles: public-domain download, re-fetched by mobile/export/build_map_assets.py
+data/naturalearth/

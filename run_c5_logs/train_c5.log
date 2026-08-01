@@ -1,0 +1,150 @@
+step 8220/9358 (87.8%) | loss 10.6420 | lrm 0.09 | 726 img/s | ep 1/1 | eta 0.11h
+
+[ckpt] uploaded ckpt_best.pt -> josefbednar/neuroguessr-fullrun2-ckpt
+step 8240/9358 (88.1%) | loss 10.0558 | lrm 0.09 | 726 img/s | ep 1/1 | eta 0.11h
+step 8260/9358 (88.3%) | loss 10.2536 | lrm 0.08 | 725 img/s | ep 1/1 | eta 0.11h
+step 8280/9358 (88.5%) | loss 10.3197 | lrm 0.08 | 646 img/s | ep 1/1 | eta 0.12h
+step 8300/9358 (88.7%) | loss 10.3183 | lrm 0.08 | 725 img/s | ep 1/1 | eta 0.10h
+step 8320/9358 (88.9%) | loss 10.3989 | lrm 0.08 | 726 img/s | ep 1/1 | eta 0.10h
+step 8340/9358 (89.1%) | loss 10.4282 | lrm 0.08 | 725 img/s | ep 1/1 | eta 0.10h
+step 8360/9358 (89.3%) | loss 10.5432 | lrm 0.08 | 726 img/s | ep 1/1 | eta 0.10h
+step 8380/9358 (89.5%) | loss 10.6189 | lrm 0.08 | 726 img/s | ep 1/1 | eta 0.10h
+step 8400/9358 (89.8%) | loss 10.4595 | lrm 0.08 | 726 img/s | ep 1/1 | eta 0.09h
+step 8420/9358 (90.0%) | loss 10.5360 | lrm 0.07 | 726 img/s | ep 1/1 | eta 0.09h
+step 8440/9358 (90.2%) | loss 10.3134 | lrm 0.07 | 725 img/s | ep 1/1 | eta 0.09h
+step 8460/9358 (90.4%) | loss 10.4469 | lrm 0.07 | 726 img/s | ep 1/1 | eta 0.09h
+step 8480/9358 (90.6%) | loss 10.4119 | lrm 0.07 | 726 img/s | ep 1/1 | eta 0.09h
+step 8500/9358 (90.8%) | loss 10.1773 | lrm 0.07 | 726 img/s | ep 1/1 | eta 0.08h
+
+[probe @ 8500] near-recall@1: @25km 19.2% | @10km 7.8% (40s)
+step 8520/9358 (91.0%) | loss 10.4806 | lrm 0.07 | 107 img/s | ep 1/1 | eta 0.56h
+step 8540/9358 (91.3%) | loss 10.5349 | lrm 0.07 | 727 img/s | ep 1/1 | eta 0.08h
+step 8560/9358 (91.5%) | loss 10.4461 | lrm 0.07 | 726 img/s | ep 1/1 | eta 0.08h
+step 8580/9358 (91.7%) | loss 10.2733 | lrm 0.07 | 725 img/s | ep 1/1 | eta 0.08h
+
+[step 8580] median_km=106.8 mean_km=549.6 acc@25km=8.2% acc@200km=69.7% acc@2500km=97.1% geoguessr=4297 cell_top1=25.0% top10=68.9% top50=92.2% rr10@100=75.5% country=42.4%
+/venv/main/lib/python3.12/site-packages/torch/distributed/c10d_logger.py:83: UserWarning: barrier(): using the device under current context. You can specify `device_id` in `init_process_group` to mute this warning.
+  return func(*args, **kwargs)
+
+[ckpt] saved last @ step 8591 (0.4s)
+step 8600/9358 (91.9%) | loss 10.4270 | lrm 0.07 | 428 img/s | ep 1/1 | eta 0.13h
+step 8620/9358 (92.1%) | loss 10.4932 | lrm 0.07 | 725 img/s | ep 1/1 | eta 0.07h
+step 8640/9358 (92.3%) | loss 10.3737 | lrm 0.06 | 727 img/s | ep 1/1 | eta 0.07h
+step 8660/9358 (92.5%) | loss 10.3103 | lrm 0.06 | 726 img/s | ep 1/1 | eta 0.07h
+step 8680/9358 (92.8%) | loss 10.4967 | lrm 0.06 | 646 img/s | ep 1/1 | eta 0.07h
+step 8700/9358 (93.0%) | loss 10.3120 | lrm 0.06 | 726 img/s | ep 1/1 | eta 0.06h
+
+[ckpt] uploaded ckpt_last.pt -> josefbednar/neuroguessr-fullrun2-ckpt
+step 8720/9358 (93.2%) | loss 10.3570 | lrm 0.06 | 728 img/s | ep 1/1 | eta 0.06h
+step 8740/9358 (93.4%) | loss 10.2595 | lrm 0.06 | 727 img/s | ep 1/1 | eta 0.06h
+step 8760/9358 (93.6%) | loss 10.5460 | lrm 0.06 | 727 img/s | ep 1/1 | eta 0.06h
+step 8780/9358 (93.8%) | loss 10.5566 | lrm 0.06 | 726 img/s | ep 1/1 | eta 0.06h
+step 8800/9358 (94.0%) | loss 10.2929 | lrm 0.06 | 725 img/s | ep 1/1 | eta 0.05h
+step 8820/9358 (94.3%) | loss 10.4999 | lrm 0.06 | 726 img/s | ep 1/1 | eta 0.05h
+step 8840/9358 (94.5%) | loss 10.4932 | lrm 0.06 | 726 img/s | ep 1/1 | eta 0.05h
+step 8860/9358 (94.7%) | loss 10.2037 | lrm 0.06 | 727 img/s | ep 1/1 | eta 0.05h
+step 8880/9358 (94.9%) | loss 10.3996 | lrm 0.06 | 727 img/s | ep 1/1 | eta 0.05h
+step 8900/9358 (95.1%) | loss 10.3794 | lrm 0.06 | 726 img/s | ep 1/1 | eta 0.04h
+step 8920/9358 (95.3%) | loss 10.2461 | lrm 0.06 | 682 img/s | ep 1/1 | eta 0.05h
+step 8940/9358 (95.5%) | loss 10.5173 | lrm 0.06 | 724 img/s | ep 1/1 | eta 0.04h
+step 8960/9358 (95.7%) | loss 10.4058 | lrm 0.05 | 727 img/s | ep 1/1 | eta 0.04h
+
+[step 8970] median_km=106.4 mean_km=488.1 acc@25km=8.2% acc@200km=69.5% acc@2500km=97.4% geoguessr=4300 cell_top1=24.9% top10=68.8% top50=92.4% rr10@100=75.5% country=41.8%
+/venv/main/lib/python3.12/site-packages/torch/distributed/c10d_logger.py:83: UserWarning: barrier(): using the device under current context. You can specify `device_id` in `init_process_group` to mute this warning.
+  return func(*args, **kwargs)
+step 8980/9358 (96.0%) | loss 10.4392 | lrm 0.05 | 440 img/s | ep 1/1 | eta 0.06h
+step 9000/9358 (96.2%) | loss 10.5651 | lrm 0.05 | 723 img/s | ep 1/1 | eta 0.04h
+
+[probe @ 9000] near-recall@1: @25km 19.5% | @10km 7.9% (40s)
+step 9020/9358 (96.4%) | loss 10.7274 | lrm 0.05 | 108 img/s | ep 1/1 | eta 0.22h
+step 9040/9358 (96.6%) | loss 10.2512 | lrm 0.05 | 728 img/s | ep 1/1 | eta 0.03h
+step 9060/9358 (96.8%) | loss 10.6246 | lrm 0.05 | 724 img/s | ep 1/1 | eta 0.03h
+step 9080/9358 (97.0%) | loss 10.4487 | lrm 0.05 | 644 img/s | ep 1/1 | eta 0.03h
+step 9100/9358 (97.2%) | loss 10.3850 | lrm 0.05 | 725 img/s | ep 1/1 | eta 0.03h
+step 9120/9358 (97.5%) | loss 10.4140 | lrm 0.05 | 726 img/s | ep 1/1 | eta 0.02h
+step 9140/9358 (97.7%) | loss 10.3545 | lrm 0.05 | 726 img/s | ep 1/1 | eta 0.02h
+step 9160/9358 (97.9%) | loss 10.4009 | lrm 0.05 | 725 img/s | ep 1/1 | eta 0.02h
+step 9180/9358 (98.1%) | loss 10.3187 | lrm 0.05 | 724 img/s | ep 1/1 | eta 0.02h
+step 9200/9358 (98.3%) | loss 10.3157 | lrm 0.05 | 682 img/s | ep 1/1 | eta 0.02h
+step 9220/9358 (98.5%) | loss 10.6358 | lrm 0.05 | 725 img/s | ep 1/1 | eta 0.01h
+step 9240/9358 (98.7%) | loss 10.3986 | lrm 0.05 | 728 img/s | ep 1/1 | eta 0.01h
+step 9260/9358 (99.0%) | loss 10.1648 | lrm 0.05 | 732 img/s | ep 1/1 | eta 0.01h
+step 9280/9358 (99.2%) | loss 10.3013 | lrm 0.05 | 733 img/s | ep 1/1 | eta 0.01h
+step 9300/9358 (99.4%) | loss 10.1804 | lrm 0.05 | 734 img/s | ep 1/1 | eta 0.01h
+step 9320/9358 (99.6%) | loss 10.4556 | lrm 0.05 | 694 img/s | ep 1/1 | eta 0.00h
+step 9340/9358 (99.8%) | loss 10.2666 | lrm 0.05 | 734 img/s | ep 1/1 | eta 0.00h
+
+[probe @ 9358] near-recall@1: @25km 19.5% | @10km 7.8% (40s)
+
+[step 9358] median_km=108.0 mean_km=486.0 acc@25km=7.5% acc@200km=69.7% acc@2500km=97.5% geoguessr=4301 cell_top1=25.5% top10=69.9% top50=91.9% rr10@100=75.5% country=43.3%
+/venv/main/lib/python3.12/site-packages/torch/distributed/c10d_logger.py:83: UserWarning: barrier(): using the device under current context. You can specify `device_id` in `init_process_group` to mute this warning.
+  return func(*args, **kwargs)
+
+
+[ckpt] saved final @ step 9358 (0.3s)
+
+[ckpt] uploaded ckpt_final.pt -> josefbednar/neuroguessr-fullrun2-ckpt
+---
+median_km:        112.024164
+mean_km:          502.418799
+acc_1km:          0.000000
+acc_25km:         0.076384
+acc_200km:        0.685123
+acc_750km:        0.910941
+acc_2500km:       0.969646
+geoguessr_score:  4266.107141
+peak_vram_mb:     29716.7
+training_seconds: 4225.7
+total_seconds:    4442.8
+num_steps:        9358
+best_val_median:  104.056940
+num_params_M:     19.11
+cell_top1: 0.247832
+cell_top5: 0.545364
+cell_top10: 0.680120
+cell_top25: 0.828552
+cell_top50: 0.910607
+country_acc: 0.430287
+cell_top1_lift: 1239.159405
+cell_top5_lift: 545.363605
+region_recall_top10_100km: 0.740827
+region_recall_top50_100km: 0.876251
+wandb: updating run metadata
+wandb: updating run metadata; uploading output.log; uploading wandb-summary.json
+wandb: updating run metadata; uploading output.log
+wandb: updating run metadata
+wandb: uploading config.yaml
+wandb: uploading data
+wandb: 
+wandb: Run history:
+wandb:   attr/acc_drive ▁▅▂▆▄▅▅▇█▆▅▇▇▇▄▇▆▆▆▇██▅▇█▇▆▇▆▆▇▇▇▇▄█▇▆▇█
+wandb:  attr/acc_koppen ▅▇▆█▆▂▃▄▆▅▅▇▅▁▄▆▃▅▇▅▇▄▅▆▅▇▆▂▇▇█▄▂▆▆▇▃▅▅█
+wandb:            epoch ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:    final/acc_1km ▁
+wandb:  final/acc_200km ▁
+wandb: final/acc_2500km ▁
+wandb:   final/acc_25km ▁
+wandb:  final/acc_750km ▁
+wandb:  final/cell_top1 ▁
+wandb: final/cell_top10 ▁
+wandb:              +44 ...
+wandb: 
+wandb: Run summary:
+wandb:   attr/acc_drive 0.96875
+wandb:  attr/acc_koppen 0.75
+wandb:  best_val_median 104.05694
+wandb:            epoch 1
+wandb:    final/acc_1km 0
+wandb:  final/acc_200km 0.68512
+wandb: final/acc_2500km 0.96965
+wandb:   final/acc_25km 0.07638
+wandb:  final/acc_750km 0.91094
+wandb:  final/cell_top1 0.24783
+wandb:              +65 ...
+wandb: 
+wandb: 🚀 View run c5-bed-main at: https://wandb.ai/josefbednar/neuroguessr-2-research/runs/c5-bed-main
+wandb: ⭐️ View project at: https://wandb.ai/josefbednar/neuroguessr-2-research
+wandb: Synced 5 W&B file(s), 0 media file(s), 0 artifact file(s) and 0 other file(s)
+wandb: Find logs at: ./wandb/run-20260724_173245-c5-bed-main/logs
+/venv/main/lib/python3.12/site-packages/torch/distributed/c10d_logger.py:83: UserWarning: barrier(): using the device under current context. You can specify `device_id` in `init_process_group` to mute this warning.
+  return func(*args, **kwargs)

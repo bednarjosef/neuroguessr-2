@@ -1,0 +1,135 @@
+
+*****************************************
+Setting OMP_NUM_THREADS environment variable for each process to be 1 in default, to avoid your system being overloaded, please further tune the variable for optimal performance in your application as needed. 
+*****************************************
+Train pool: 1198072 images | Backbone: facebook/dinov3-vitl16-pretrain-lvd1689m @ 384px | 4 GPU(s) x bs64 = global 256
+/venv/main/lib/python3.12/site-packages/torch/distributed/c10d_logger.py:83: UserWarning: barrier(): using the device under current context. You can specify `device_id` in `init_process_group` to mute this warning.
+  return func(*args, **kwargs)
+[rank0]:[W724 17:08:57.293471362 ProcessGroupNCCL.cpp:5188] Guessing device ID based on global rank. This can cause a hang if rank to GPU mapping is heterogeneous. You can specify device_id in init_process_group()
+Geocells: 5000 fine (country-constrained) x2 staggered + hierarchy [64, 512] (k-means, 25 iters) | MSL_W=0.5 | aug=on
+Countries: 116 (majority-vote parents for 5000 cells)
+C5 episode tables: 299518 locations | Köppen pools [68585, 43388, 131677, 45657, 4732, 5479] | EP 4x16 tau_geo 100.0
+/venv/main/lib/python3.12/site-packages/torch/distributed/c10d_logger.py:83: UserWarning: barrier(): using the device under current context. You can specify `device_id` in `init_process_group` to mute this warning.
+  return func(*args, **kwargs)
+Trainable params: 19.11M (LoRA 7.08M + head 12.03M) | LR scale x2.00
+Plan: 1 epochs x 4679 steps = 200 steps (global batch 256) | warmup 300 | eval every 390 | ckpt every 781
+Val quantization floor @ 5000 cells: 33.9 km (median dist to nearest cell centroid)
+Probe: 800 queries x 12000 pool imgs | ceiling @25km 100% (must be ~100), @10km 32%
+wandb: [wandb.login()] Loaded credentials for https://api.wandb.ai from WANDB_API_KEY.
+wandb: Currently logged in as: josef-bednar (josefbednar) to https://api.wandb.ai. Use `wandb login --relogin` to force relogin
+/root/auto/train_c5.py:304: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:213.)
+  arr = torch.from_numpy(np.asarray(img, dtype=np.uint8)).permute(2, 0, 1)
+/root/auto/train_c5.py:304: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:213.)
+  arr = torch.from_numpy(np.asarray(img, dtype=np.uint8)).permute(2, 0, 1)
+/root/auto/train_c5.py:304: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:213.)
+  arr = torch.from_numpy(np.asarray(img, dtype=np.uint8)).permute(2, 0, 1)
+wandb: WARNING Serializing object of type list that is 2601560 bytes
+wandb: WARNING Serializing object of type list that is 2601560 bytes
+wandb: setting up run c5-pilot-base
+wandb: WARNING Serializing object of type list that is 2601560 bytes
+wandb: WARNING Serializing object of type list that is 2601560 bytes
+wandb: Tracking run with wandb version 0.28.1
+wandb: Run data is saved locally in /root/auto/wandb/run-20260724_170906-c5-pilot-base
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run c5-pilot-base
+wandb: ⭐️ View project at https://wandb.ai/josefbednar/neuroguessr-2-research
+wandb: 🚀 View run at https://wandb.ai/josefbednar/neuroguessr-2-research/runs/c5-pilot-base
+W&B: online (project=neuroguessr-2-research, id=c5-pilot-base)
+compile warmup…
+/root/auto/train_c5.py:304: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:213.)
+  arr = torch.from_numpy(np.asarray(img, dtype=np.uint8)).permute(2, 0, 1)
+wandb: WARNING Fatal error while uploading data. Some run data will not be synced, but it will still be written to disk. Use `wandb sync` at the end of the run to try uploading.
+compile warmup done in 109s
+
+[step 0] median_km=8390.5 mean_km=8292.6 acc@25km=0.1% acc@200km=0.4% acc@2500km=14.9% geoguessr=383 cell_top1=0.1% top10=0.1% top50=0.7% rr10@100=1.5% country=2.5%
+/venv/main/lib/python3.12/site-packages/torch/distributed/c10d_logger.py:83: UserWarning: barrier(): using the device under current context. You can specify `device_id` in `init_process_group` to mute this warning.
+  return func(*args, **kwargs)
+[probe] image cache built (15s)
+
+[probe @ 0] near-recall@1: @25km 9.5% | @10km 3.2% (55s)
+step 20/200 (10.0%) | loss 24.1123 | lrm 0.07 | 299 img/s | ep 1/1 | eta 0.04h
+step 40/200 (20.0%) | loss 22.9081 | lrm 0.13 | 589 img/s | ep 1/1 | eta 0.02h
+step 60/200 (30.0%) | loss 20.4513 | lrm 0.20 | 729 img/s | ep 1/1 | eta 0.01h
+step 80/200 (40.0%) | loss 18.6189 | lrm 0.27 | 728 img/s | ep 1/1 | eta 0.01h
+step 100/200 (50.0%) | loss 17.3907 | lrm 0.33 | 728 img/s | ep 1/1 | eta 0.01h
+step 120/200 (60.0%) | loss 16.5850 | lrm 0.40 | 728 img/s | ep 1/1 | eta 0.01h
+step 140/200 (70.0%) | loss 15.9413 | lrm 0.47 | 728 img/s | ep 1/1 | eta 0.01h
+step 160/200 (80.0%) | loss 15.6206 | lrm 0.53 | 726 img/s | ep 1/1 | eta 0.00h
+step 180/200 (90.0%) | loss 15.2766 | lrm 0.60 | 728 img/s | ep 1/1 | eta 0.00h
+step 200/200 (100.0%) | loss 14.7597 | lrm 0.67 | 726 img/s | ep 1/1 | eta 0.00h
+
+[probe @ 200] near-recall@1: @25km 13.8% | @10km 6.1% (40s)
+
+[step 200] median_km=371.5 mean_km=1546.6 acc@25km=1.6% acc@200km=33.1% acc@2500km=86.0% geoguessr=3284 cell_top1=4.4% top10=25.9% top50=63.4% rr10@100=42.1% country=31.9%
+/venv/main/lib/python3.12/site-packages/torch/distributed/c10d_logger.py:83: UserWarning: barrier(): using the device under current context. You can specify `device_id` in `init_process_group` to mute this warning.
+  return func(*args, **kwargs)
+
+[ckpt] saved best @ step 200 (0.5s)
+
+
+[ckpt] saved final @ step 200 (0.2s)
+
+[ckpt] uploaded ckpt_best.pt -> josefbednar/neuroguessr-fullrun2-ckpt
+---
+median_km:        369.226339
+mean_km:          1656.385719
+acc_1km:          0.000000
+acc_25km:         0.019013
+acc_200km:        0.320213
+acc_750km:        0.670781
+acc_2500km:       0.848566
+geoguessr_score:  3249.031719
+peak_vram_mb:     29716.7
+training_seconds: 128.1
+total_seconds:    352.6
+num_steps:        200
+best_val_median:  371.542325
+num_params_M:     19.11
+cell_top1: 0.046031
+cell_top5: 0.168112
+cell_top10: 0.263175
+cell_top25: 0.456304
+cell_top50: 0.633756
+country_acc: 0.308205
+cell_top1_lift: 230.153427
+cell_top5_lift: 168.112069
+region_recall_top10_100km: 0.413276
+region_recall_top50_100km: 0.699466
+wandb: updating run metadata
+wandb: updating run metadata; uploading output.log; uploading wandb-summary.json
+wandb: updating run metadata; uploading wandb-summary.json
+wandb: updating run metadata
+wandb: uploading config.yaml
+wandb: 
+wandb: Run history:
+wandb:   attr/acc_drive ▁▁▅▇▃▃▇██▇
+wandb:  attr/acc_koppen ▁▄▇▇▇▇▅█▅▇
+wandb:            epoch ▁▁▁▁▁▁▁▁▁▁
+wandb:    final/acc_1km ▁
+wandb:  final/acc_200km ▁
+wandb: final/acc_2500km ▁
+wandb:   final/acc_25km ▁
+wandb:  final/acc_750km ▁
+wandb:  final/cell_top1 ▁
+wandb: final/cell_top10 ▁
+wandb:              +44 ...
+wandb: 
+wandb: Run summary:
+wandb:   attr/acc_drive 0.89062
+wandb:  attr/acc_koppen 0.82812
+wandb:  best_val_median 371.54232
+wandb:            epoch 1
+wandb:    final/acc_1km 0
+wandb:  final/acc_200km 0.32021
+wandb: final/acc_2500km 0.84857
+wandb:   final/acc_25km 0.01901
+wandb:  final/acc_750km 0.67078
+wandb:  final/cell_top1 0.04603
+wandb:              +65 ...
+wandb: 
+wandb: 🚀 View run c5-pilot-base at: https://wandb.ai/josefbednar/neuroguessr-2-research/runs/c5-pilot-base
+wandb: ⭐️ View project at: https://wandb.ai/josefbednar/neuroguessr-2-research
+wandb: Synced 5 W&B file(s), 0 media file(s), 0 artifact file(s) and 0 other file(s)
+wandb: Find logs at: ./wandb/run-20260724_170906-c5-pilot-base/logs
+/venv/main/lib/python3.12/site-packages/torch/distributed/c10d_logger.py:83: UserWarning: barrier(): using the device under current context. You can specify `device_id` in `init_process_group` to mute this warning.
+  return func(*args, **kwargs)

@@ -1,0 +1,29 @@
+loading…
+1198072 imgs, 299518 locs | d_pos=25.0km p_same=0.25
+baseline probe near-recall@1 (<= 25.0km): 0.0452
+ep1 step 100 loss 3.4906 (49s)
+epoch 1: probe near-recall@1 = 0.0628
+ep2 step 200 loss 3.2453 (99s)
+epoch 2: probe near-recall@1 = 0.0728
+ep3 step 300 loss 3.1050 (151s)
+ep3 step 400 loss 2.8542 (202s)
+epoch 3: probe near-recall@1 = 0.0756
+ep4 step 500 loss 2.8422 (254s)
+epoch 4: probe near-recall@1 = 0.0768
+ep5 step 600 loss 2.7994 (305s)
+ep5 step 700 loss 2.8507 (357s)
+epoch 5: probe near-recall@1 = 0.0808
+ep6 step 800 loss 2.6769 (409s)
+epoch 6: probe near-recall@1 = 0.0812
+ep7 step 900 loss 2.5880 (461s)
+ep7 step 1000 loss 2.6376 (512s)
+epoch 7: probe near-recall@1 = 0.0852
+ep8 step 1100 loss 2.6000 (564s)
+epoch 8: probe near-recall@1 = 0.0852
+ep9 step 1200 loss 2.6102 (616s)
+epoch 9: probe near-recall@1 = 0.0856
+ep10 step 1300 loss 2.6873 (667s)
+ep10 step 1400 loss 2.6104 (719s)
+epoch 10: probe near-recall@1 = 0.0848
+saved geo25_cls_c5.pt
+GEO HEAD DONE
