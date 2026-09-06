@@ -1004,6 +1004,59 @@ usable-street-level accuracy, and one query in a hundred lands nearly eight thou
 kilometres away. There is very little in between, and this is why the mean is a poor summary
 and the median a good one.
 
+\subsection{External benchmarks: transfer to consumer photographs}
+\label{sec:external}
+
+Every number so far is measured on held-out Street View imagery. To measure transfer to
+consumer photographs directly, we ran the frozen champion pipeline on the two standard
+benchmarks of the field: IM2GPS \cite{hays2008im2gps} (237 Flickr images) and IM2GPS3k
+\cite{vo2017revisiting} (2{,}997 Flickr images). The protocol involves no benchmark-side
+fitting of any kind: the encoder, gate, blend weights, hubness correction, whitening and the
+E7 reranker (fit once on our own validation split) are all applied exactly as deployed.
+
+\begin{table}[t]
+\centering
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lrrrrrl}
+\toprule
+System & @1~km & @25~km & @200~km & @750~km & @2500~km & training imagery \\
+\midrule
+ISNs \cite{mullerbudack2018geolocation} & $10.5$ & $28.0$ & $36.6$ & $49.7$ & $66.0$ & 4.7M Flickr \\
+GeoCLIP \cite{cepeda2023geoclip} & $14.1$ & $34.5$ & $50.7$ & $69.7$ & $83.8$ & 4.7M Flickr \\
+PIGEOTTO \cite{haas2024pigeon} & $11.3$ & $36.7$ & $53.8$ & $72.4$ & $85.3$ & 4.5M Flickr+landmarks \\
+\midrule
+Ours, classifier argmax & $0.0$ & $3.2$ & $17.4$ & $38.0$ & $60.7$ & 1.2M Street View \\
+Ours, full pipeline & $0.5$ & $9.6$ & $20.3$ & $41.2$ & $65.0$ & 1.2M Street View \\
+\midrule
+Oracle: nearest index image & $13.6$ & $86.8$ & $90.6$ & $98.3$ & $100.0$ & (index coverage bound) \\
+\bottomrule
+\end{tabular}
+\caption{IM2GPS3k, percentage of queries localized within each radius. Published rows are
+from the cited papers; all are trained on Flickr-distribution corpora, the same distribution
+the benchmark is drawn from. The oracle row is the fraction of queries for which \emph{any}
+index image lies within the radius: the ceiling of any retrieval over our index.}
+\label{tab:im2gps3k}
+\end{table}
+
+Table~\ref{tab:im2gps3k} reports IM2GPS3k; IM2GPS is qualitatively identical (median
+$660$~km, $10.1\%$ at 25~km). The result is poor, and the decomposition says precisely why.
+Index coverage is not the bottleneck at city scale: an index image within 25~km exists for
+$86.8\%$ of IM2GPS3k queries. But the matcher converts that coverage $11\%$ of the time,
+against $46\%$ in-domain. A Street View--trained descriptor is being asked to match a
+Flickr close-up, an indoor scene or a landmark photograph against road-level views of the
+same place, and mostly cannot. At street scale the index itself caps the task: only $13.6\%$
+of queries have \emph{any} index image within 1~km, so even a perfect matcher could not
+reach GeoCLIP's $14.1\%$. Two facts survive the transfer intact. Retrieval still triples the
+classifier ($3.2\% \to 9.6\%$ at 25~km, median $1498 \to 1144$~km), so the structural claim
+of this paper, classify to look and retrieve to answer, holds out of domain. And the
+failure is a corpus property rather than a method property: the published systems above
+train on the benchmark's own distribution, while the two Street View--trained systems in the
+literature simply do not report these benchmarks (PIGEON proper was never evaluated on them,
+and OSV-5M \cite{astruc2024osv5m} declines the comparison, judging roughly a third of
+IM2GPS3k non-localizable). We report the numbers anyway: they are the honest measurement of
+the domain gap that Section~\ref{sec:limitations} previously only asserted.
+
 \section{Negative results}
 \label{sec:negatives}
 
@@ -1164,11 +1217,16 @@ around that contract, with a manifest checked before the machine was allowed to 
 The encoder it produced lost. The cache it produced is still being used.
 
 \subsection{Limitations}
+\label{sec:limitations}
 
-The evaluation is on a single held-out split of one Street View corpus, and Street View
-imagery has a distinctive and consistent capture process. We have no measurement of transfer
-to arbitrary consumer photographs, which is what the deployed application actually receives.
-This is the most important gap in the work.
+The headline evaluation is on a single held-out split of one Street View corpus, and Street
+View imagery has a distinctive and consistent capture process. Section~\ref{sec:external}
+now measures transfer to consumer photographs directly, and the measurement is sobering:
+$9.6\%$ at 25~km on IM2GPS3k against $34$--$37\%$ for Flickr-trained systems. The
+decomposition there shows the gap is dominated by descriptor domain shift rather than index
+coverage, which bounds what any amount of post-hoc lever-pulling on the current corpus can
+recover. Closing it requires consumer-distribution imagery in both the fine-tune and the
+index; it is a data problem before it is a method problem.
 
 The reranker is fit and evaluated by cross-validation on the same 2{,}998 queries. The folds
 are disjoint by query and no query is scored by a model that saw it, so the numbers are not

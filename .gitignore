@@ -51,3 +51,8 @@ run_c5_index/
 
 # Natural Earth shapefiles: public-domain download, re-fetched by mobile/export/build_map_assets.py
 data/naturalearth/
+
+# benchmark test-set images: re-downloadable, see benchmarks/PROVENANCE.md for sources
+benchmarks/im2gps/images/
+benchmarks/im2gps3k/images/
+benchmarks/embeds/

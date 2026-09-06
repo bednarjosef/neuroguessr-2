@@ -387,6 +387,36 @@ _(anything about the box, dataset, VRAM ceilings, throughput, DINOv3 quirks, etc
 
 ## Session history
 
+### 2026-08-07 — EXTERNAL BENCHMARKS (im2gps/im2gps3k): domain gap measured, paper cell filled
+- **Frozen champion (C4 bed + 4band+CSLS+wh + E7 λ2, E7 fit once on full val, zero benchmark
+  fitting) on the standard Flickr test sets.** IM2GPS3k (n=2997): **@1 0.50% / @25 9.61% /
+  @200 20.32% / @750 41.17% / @2500 65.03%, median 1144 km**. IM2GPS-237: @25 10.13%, median
+  660 km. Flickr-trained published systems: GeoCLIP 14.1/34.5/50.7/69.7/83.8, PIGEOTTO
+  11.3/36.7/53.8/72.4/85.3 (all trained on MP-16-style Flickr = the benchmark's own
+  distribution; the other street-view-trained systems — PIGEON proper, OSV-5M — never report
+  these benchmarks; OSV-5M calls ~35% of im2gps3k non-localizable).
+- **Decomposition (the useful part): coverage is NOT the bottleneck at city scale.** Oracle
+  nearest-index-image: within 25 km for **86.8%** of im2gps3k queries (val: 100%), within
+  1 km for only **13.6%** (street-scale ceiling: even a perfect matcher can't reach GeoCLIP's
+  14.1% @1). Matcher converts coverage **11% of the time OOD vs 46% in-domain** → the gap is
+  descriptor domain shift (street-view features vs Flickr close-ups/indoor/landmarks), a
+  corpus property, not a method property. Retrieval still triples the classifier OOD
+  (@25 3.2→9.6%, median 1498→1144) — the classify-to-look/retrieve-to-answer claim survives.
+- **Val anchor reproduced first** (local CPU, seeded): E7 λ2 CV 33.62 / @25 46.13 / GG 4468
+  (recorded 34.10/46.26/4470; delta = previously-unseeded whitening/CSLS draws). CSLS
+  hubness r=0.604 exact match.
+- **Paper updated**: new §Results "External benchmarks" (table tab:im2gps3k + oracle row) +
+  Limitations rewritten (transfer now measured, 9.6% vs 34–37%; "data problem before method
+  problem"). Compiles clean via tectonic (no local pdflatex; static binary works).
+- **Infra**: benchmarks pulled with zero losses (im2gps 237 from CMU page; im2gps3k 3k imgs
+  via HF mirror `MatchaMacchiato/img2gps3k` — only findable under that misspelling; GT from
+  TIBHannover meta CSVs via research mirrors — TIBHannover gutted their repo for ethics
+  reasons). Query embed on gpubox 3060 @ 26.7 img/s bf16 (100x local CPU); scoring stays
+  local (bed needs ~13GB RAM > box's 10GB cap). New scripts:
+  `retrieval/local_evals/bench_embed.py` (manifest → cls+logits, CPU/GPU),
+  `retrieval/local_evals/bench_eval.py` (frozen-champion scorer, val-anchored E7).
+  Artifacts: `benchmarks/` (manifests, PROVENANCE, embeds, results npz + oracle arrays).
+
 ### 2026-07-24 (night 5) — C3 ENCODER FINE-TUNE + LEVER SWEEP: 43.75 -> 36.96 km, @25 42.9 -> 46.1%
 
 - **CHAMPION: C3 descriptors, 4-band head blend (d_pos 5/10/25/50) + CSLS + whitened cls +
