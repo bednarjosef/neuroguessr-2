@@ -1,75 +1,75 @@
 commit	score	memory_gb	status	description
-7d22c37	535.433484	6.8	keep	baseline: DINOv3-L LoRA r16 @448, 512 cells, tau75, bs48 (46 img/s)
-7d22c37	0.0	31.4	crash	no-ckpt + 32 workers @ bs48: OOM (activations >32GB)
-9890292	433.295567	17.8	keep	no grad-ckpt + bs24x2 + 32 workers (+47% steps)
-0f6483f	398.492614	17.8	keep	geocells 2048 + PRED_TOPK 16 (acc@200 29.9%)
-0f6483f	395.541182	17.8	discard	cls_mean pooling: 398.5->395.5, within noise; neutral, not confirmed
-0f6483f	395.701366	17.9	discard	offset-regression head: 395.7, within noise; within-cell res not the bottleneck
-ae5e29f	283.354824	17.8	keep	mode-seeking pred rule T0.5 r1000 (-29%, acc@200 39.8%)
-ae5e29f	278.324913	18.9	discard	unfreeze last2 blocks: 278.3 (-5.1, borderline); grid: T0.35 r1000 best, no-locality terrible
-ae5e29f	280.585982	18.9	discard	unfreeze+T0.35 combo: 280.6, still within noise vs 283.4; unfreeze ~1% real at best
-ae5e29f	316.372293	17.8	discard	tau 75->40: 316.4, sharper labels HURT at 2048 cells
-337e4a7	282.777192	17.8	keep	session2 baseline re-run @337e4a7: 282.8 (~= champ 283.4, noise); val cell_top1 14.0% lift 288x
-337e4a7	306.107097	17.9	discard	pano InfoNCE aux (pairs, lam0.5): 306.1 (+23 WORSE); cell_top1 14.0->11.9 — pair batches halve location diversity at 8min budget
-7acb12a	263.898983	17.9	keep	hier heads 64/512/2048 log-space: 263.9 (-18.9 KEEP); mean 1219, acc2500 89.9% — coarse levels fix wrong-region mass
-7acb12a	271.002693	17.9	discard	tau 75->110 on hier champion: 271.0 (+7.1 worse) — tau sweep DONE, 75 frozen
-a2f907c	238.025489	13.7	keep	IMG 384: 238.0 (-25.9 KEEP); 961 steps (+50%), cell_top1 15.2%, vram 13.7GB — throughput still king
-a2f907c	246.923165	25.5	discard	bs48x1 @384: 246.9 (+8.9 worse); fused pass SLOWER (92 vs 106 img/s) — bs24x2 frozen
-a2f907c	239.271219	13.7	discard	geo-safe aug (RRC+jitter): 239.3 (+1.3, noise-neutral at 0.5 epochs) — park for long runs
-a2f907c	247.339725	13.7	discard	TTA 3 center crops @final: 247.3 (+9.3 worse) — crop-averaging blurs the mode; single-view stays
-a2f907c	230.929419	13.7	discard	EVAL_EVERY 250: 230.9 (-7.1, below 8km bar) — full 480s training, 1056 steps; confirm run next
-32075c7	229.878710	13.7	keep	EVAL_EVERY 250 CONFIRM: 229.9 (2nd run, KEEP) — harness-efficiency win, not modeling
-32075c7	232.447783	13.7	keep	S3 baseline re-run (champion 32075c7) — 232.4, ref for this box
-32075c7	238.697009	13.7	discard	S3 exp19 geo-contrastive hard negatives (proj128, margin .3, far>1500km, w=.1) — +6.3 worse; cell_top1 15.7 (up) but median down, -5% steps
-32075c7	239.673537	13.7	discard	S3 exp20 prototype cosine head + log-space ensemble (256d, temp .07, beta 1) — +7.2 worse; cell_top1 16.4% BEST, acc25 3.4% up, median down — sharper fused posterior hurts spherical mean
-32075c7	236.078433	13.7	discard	S3 exp21 EMA of trainables (0.999 warmup-corrected, eval EMA copy) — +3.7 (noise); too few steps for EMA to shine, park for long runs
-32075c7	236.316596	13.7	discard	S3 exp22 surgical rerank (fused selects cells, orig posterior weights) — +3.9 noise; cell_top1 16.2/top5 44.9 up AGAIN but median flat — classifier-aux direction exhausted at 8min
-32075c7	224.798044	13.7	keep	S3 exp23 torch.compile(backbone,dynamic)+pre-clock warmup — 224.8 (−7.6), +14% steps (1205), top1 17.4%; confirm re-run in flight
-804fe7f	224.846350	13.7	keep	S3 exp23b confirm — 224.8 twice; torch.compile banked, NEW CHAMPION
-804fe7f	221.472314	25.8	keep	S3 exp24 bs48x1 compiled — 221.5 (−3.3, marginal; exp14 per-step evidence supports), confirming
-ae5c260	221.555668	25.5	keep	S3 exp24b confirm — 221.5/221.6, bs48x1 banked, NEW CHAMPION
-ae5c260	0.000000	31.4	crash	S3 exp25 LoRA on gated MLP (up/gate/down) — OOM at bs48 (26GB base + MLP adapter activations >32GB); would need bs24 pairing, not retried bigger
-ae5c260	221.496372	25.5	keep	S4 baseline re-run of champion (221.5) — seed
+a23c44d	535.433484	6.8	keep	baseline: DINOv3-L LoRA r16 @448, 512 cells, tau75, bs48 (46 img/s)
+a23c44d	0.0	31.4	crash	no-ckpt + 32 workers @ bs48: OOM (activations >32GB)
+c460035	433.295567	17.8	keep	no grad-ckpt + bs24x2 + 32 workers (+47% steps)
+be46023	398.492614	17.8	keep	geocells 2048 + PRED_TOPK 16 (acc@200 29.9%)
+be46023	395.541182	17.8	discard	cls_mean pooling: 398.5->395.5, within noise; neutral, not confirmed
+be46023	395.701366	17.9	discard	offset-regression head: 395.7, within noise; within-cell res not the bottleneck
+359b895	283.354824	17.8	keep	mode-seeking pred rule T0.5 r1000 (-29%, acc@200 39.8%)
+359b895	278.324913	18.9	discard	unfreeze last2 blocks: 278.3 (-5.1, borderline); grid: T0.35 r1000 best, no-locality terrible
+359b895	280.585982	18.9	discard	unfreeze+T0.35 combo: 280.6, still within noise vs 283.4; unfreeze ~1% real at best
+359b895	316.372293	17.8	discard	tau 75->40: 316.4, sharper labels HURT at 2048 cells
+3bd2775	282.777192	17.8	keep	session2 baseline re-run @3bd2775: 282.8 (~= champ 283.4, noise); val cell_top1 14.0% lift 288x
+3bd2775	306.107097	17.9	discard	pano InfoNCE aux (pairs, lam0.5): 306.1 (+23 WORSE); cell_top1 14.0->11.9 — pair batches halve location diversity at 8min budget
+06612ff	263.898983	17.9	keep	hier heads 64/512/2048 log-space: 263.9 (-18.9 KEEP); mean 1219, acc2500 89.9% — coarse levels fix wrong-region mass
+06612ff	271.002693	17.9	discard	tau 75->110 on hier champion: 271.0 (+7.1 worse) — tau sweep DONE, 75 frozen
+af16813	238.025489	13.7	keep	IMG 384: 238.0 (-25.9 KEEP); 961 steps (+50%), cell_top1 15.2%, vram 13.7GB — throughput still king
+af16813	246.923165	25.5	discard	bs48x1 @384: 246.9 (+8.9 worse); fused pass SLOWER (92 vs 106 img/s) — bs24x2 frozen
+af16813	239.271219	13.7	discard	geo-safe aug (RRC+jitter): 239.3 (+1.3, noise-neutral at 0.5 epochs) — park for long runs
+af16813	247.339725	13.7	discard	TTA 3 center crops @final: 247.3 (+9.3 worse) — crop-averaging blurs the mode; single-view stays
+af16813	230.929419	13.7	discard	EVAL_EVERY 250: 230.9 (-7.1, below 8km bar) — full 480s training, 1056 steps; confirm run next
+c7202d3	229.878710	13.7	keep	EVAL_EVERY 250 CONFIRM: 229.9 (2nd run, KEEP) — harness-efficiency win, not modeling
+c7202d3	232.447783	13.7	keep	S3 baseline re-run (champion c7202d3) — 232.4, ref for this box
+c7202d3	238.697009	13.7	discard	S3 exp19 geo-contrastive hard negatives (proj128, margin .3, far>1500km, w=.1) — +6.3 worse; cell_top1 15.7 (up) but median down, -5% steps
+c7202d3	239.673537	13.7	discard	S3 exp20 prototype cosine head + log-space ensemble (256d, temp .07, beta 1) — +7.2 worse; cell_top1 16.4% BEST, acc25 3.4% up, median down — sharper fused posterior hurts spherical mean
+c7202d3	236.078433	13.7	discard	S3 exp21 EMA of trainables (0.999 warmup-corrected, eval EMA copy) — +3.7 (noise); too few steps for EMA to shine, park for long runs
+c7202d3	236.316596	13.7	discard	S3 exp22 surgical rerank (fused selects cells, orig posterior weights) — +3.9 noise; cell_top1 16.2/top5 44.9 up AGAIN but median flat — classifier-aux direction exhausted at 8min
+c7202d3	224.798044	13.7	keep	S3 exp23 torch.compile(backbone,dynamic)+pre-clock warmup — 224.8 (−7.6), +14% steps (1205), top1 17.4%; confirm re-run in flight
+62e92d2	224.846350	13.7	keep	S3 exp23b confirm — 224.8 twice; torch.compile banked, NEW CHAMPION
+62e92d2	221.472314	25.8	keep	S3 exp24 bs48x1 compiled — 221.5 (−3.3, marginal; exp14 per-step evidence supports), confirming
+ec1b843	221.555668	25.5	keep	S3 exp24b confirm — 221.5/221.6, bs48x1 banked, NEW CHAMPION
+ec1b843	0.000000	31.4	crash	S3 exp25 LoRA on gated MLP (up/gate/down) — OOM at bs48 (26GB base + MLP adapter activations >32GB); would need bs24 pairing, not retried bigger
+ec1b843	221.496372	25.5	keep	S4 baseline re-run of champion (221.5) — seed
 0000000	0.0	0.0	crash	S4 exp1a patch dropout — tf5.14 has .model not .layer; fixed, rerun
-71ee6c4	217.353437	13.8	keep	S4 exp1 PatchDropout 0.5 (train-only, rope-indexed): 221.5->217.4, steps 1307->2748, vram 26->13.8GB — confirming
-948fe2e	215.389469	13.8	keep	S4 exp1b CONFIRM PatchDropout: 215.4 — KEEP, new champion
+021d413	217.353437	13.8	keep	S4 exp1 PatchDropout 0.5 (train-only, rope-indexed): 221.5->217.4, steps 1307->2748, vram 26->13.8GB — confirming
+608ab83	215.389469	13.8	keep	S4 exp1b CONFIRM PatchDropout: 215.4 — KEEP, new champion
 0000000	223.774630	13.8	discard	S4 exp28 geocells 4096+topk24: 223.8 (+8.4). acc@25 up but 4096-way CE too hard at 2750 steps (top1 10.6%) — cell-count sweep DONE at this budget
 0000000	219.157581	8.7	discard	S4 exp29 FixRes 288/384: 219.2 (+3.8). 4410 steps but worse — step-scaling exhausted past ~2750; res loss now nets negative
 0000000	227.152908	13.8	discard	S4 exp30 LRx2 (2e-4/2e-3): 227.2 (+11.8) — LR sweep DONE, 1e-4/1e-3 frozen
 0000000	241.352521	13.8	discard	S4 exp31 Muon(head, lr.02): 241.4 (+26) — too hot/mismatched; if ever retried start lr<=5e-3
-0d8f933	209.610872	25.8	keep	S4 exp32 bs96x1 (PatchDropout headroom): 215.4->209.6, top1 18.6% best ever — confirming
-63e090c	210.112733	25.8	keep	S4 exp32b CONFIRM bs96: 210.1 — KEEP, champion ~210
-63e090c	212.203007	25.8	keep	S5 baseline re-run (63e090c champion): seeds session at 212.2 (=210.1 within noise)
-950f76e	210.337195	25.8	keep	S5 exp1 country-level geographic hier (hard-CE 0.5 + log-space combine via majority parents): 212.2->210.3, mean -60, acc2500 +1.0pp — confirming
-39d8efb	210.576151	25.8	keep	S5 exp1b confirm: 210.34/210.58 both beat 212.2 — country hier KEEP, champion ~210.5
+4c04b62	209.610872	25.8	keep	S4 exp32 bs96x1 (PatchDropout headroom): 215.4->209.6, top1 18.6% best ever — confirming
+6d8ca60	210.112733	25.8	keep	S4 exp32b CONFIRM bs96: 210.1 — KEEP, champion ~210
+6d8ca60	212.203007	25.8	keep	S5 baseline re-run (6d8ca60 champion): seeds session at 212.2 (=210.1 within noise)
+1261944	210.337195	25.8	keep	S5 exp1 country-level geographic hier (hard-CE 0.5 + log-space combine via majority parents): 212.2->210.3, mean -60, acc2500 +1.0pp — confirming
+c557b72	210.576151	25.8	keep	S5 exp1b confirm: 210.34/210.58 both beat 212.2 — country hier KEEP, champion ~210.5
 0000000	210.215839	25.8	discard	S5 exp3 subdivision level (1895-way, w.5): 210.2 — median flat, panel regressed vs country-only (mean +40, top1 -1.3pp). Geographic hier DONE at country granularity
 0000000	0.000000	32.0	crash	S5 exp4a IMG448+PatchDropout @ bs96: OOM at warmup (31.3GB) — retry paired with bs72
 0000000	224.427316	27.5	discard	S5 exp4b IMG448+dropout @ bs72: 224.4 (+14) — 448 loses even post-saturation; 384 FROZEN (3rd independent confirmation)
-792e9a9	209.526274	25.8	keep	S5 exp5 tau-smoothed country targets (300km over country centroids): 209.5 best of session — confirming
-07bd934	210.295824	25.8	keep	S5 exp5b confirm: 209.53/210.30 both beat hard-CE champion — tau-country KEEP, champion ~209.9
+2c27b84	209.526274	25.8	keep	S5 exp5 tau-smoothed country targets (300km over country centroids): 209.5 best of session — confirming
+77b4082	210.295824	25.8	keep	S5 exp5b confirm: 209.53/210.30 both beat hard-CE champion — tau-country KEEP, champion ~209.9
 0000000	222.606257	25.8	discard	S5 exp6 retrieval refinement v1 (top8-NN blend .5 in top5 cells): 222.6 (+12.7) BUT acc@25 3.97% best ever — snap helps close cases, hurts median at top1=18%. One retune later: sim-gated cluster-centroid version
 0000000	216.616442	25.7	discard	S5 exp8 semantic geocells (country-constrained kmeans): 216.6 vs ~209.9 Estonia champion (+6.7, pending same-box anchor); top1 16.3 down; first country_acc reading 46.1%
-bcf1049	214.173295	25.7	keep	S5 anchor: champion re-run on Korea box 45534538 = 214.2 (box reads +4 vs Estonia; country_acc 44.6%)
-bcf1049	211.232747	29.0	keep	S5 exp9 ViT-H+ (0.84B, bs48): 214.2->211.2 marginal on median BUT mean 876 / acc2500 93.4% / geoguessr 3836 all best-ever at 1279 steps — confirming
+e34ed60	214.173295	25.7	keep	S5 anchor: champion re-run on Korea box 45534538 = 214.2 (box reads +4 vs Estonia; country_acc 44.6%)
+e34ed60	211.232747	29.0	keep	S5 exp9 ViT-H+ (0.84B, bs48): 214.2->211.2 marginal on median BUT mean 876 / acc2500 93.4% / geoguessr 3836 all best-ever at 1279 steps — confirming
 0000000	211.232747	29.0	discard	S5 exp9 ViT-H+ VERDICT (Josef): drop — gain marginal (211.2 vs 214.2), model too large; confirm aborted. Panel note: mean 876/acc2500 93.4% best-ever — capacity helps coarse geography, park for long budgets
 0000000	240.685631	25.7	discard	S5 exp10 H3-2122 as FINE cells: 240.7 (+26.5 vs 214.2) with top1 25.7/top5 52.8/country 54.5 ALL RECORDS — quantization-floor confirmed: balanced cells classify easier but guess coarser. Use as evidence level, not geometry
 0000000	222.689827	25.7	discard	S5 exp11 H3-2122 as extra hier LEVEL: 222.7 (+8.5) — 2k-way aux vocab steals gradient regardless of wiring (matches subdivision). Cell-scheme chapter CLOSED: kmeans2048+64/512+country is the 8-min optimum
 0000000	219.935678	25.8	discard	S5 exp12 within-cell offset head (per-cell tangent regression, zero-init, Huber): 219.9 (+5.7) — within-cell position is as hard as classification at 1500 steps; PARK for long budgets (needs converged selector)
-1dfceb0	213.026767	30.3	keep	S5 exp13 PATCH_KEEP 0.6: 214.2->213.0 KEEP (>=1km rule); 1295 steps; VRAM 31.0GB peak — patch-keep frozen (no headroom)
+3f2c4ce	213.026767	30.3	keep	S5 exp13 PATCH_KEEP 0.6: 214.2->213.0 KEEP (>=1km rule); 1295 steps; VRAM 31.0GB peak — patch-keep frozen (no headroom)
 0000000	0.000000	31.4	crash	S5 exp14a GeM(cls+gem concat) @ bs96: OOM at warmup — champion sits at 31.0GB after PATCH_KEEP 0.6; GeM needs memory pairing
 0000000	212.141253	28.0	discard	S5 exp14b GeM cls+gem @ bs84 (recovered from run.log after SSH drop): 212.1 vs 213.0 — misses >=1km bar by 0.11km. Panel better (mean 950, acc2500 92.5, country 46.1) — ONE retune allowed later
 0000000	214.810684	30.4	discard	S5 exp15 LoRA r32/a64: 214.8 (+1.8) — capacity costs steps (1158), doesn't pay; r16 FROZEN
-0c153ed	215.654	30.4	keep	S6 baseline (Italy box anchor): champion @ 0c153ed
-0c153ed	209.489	30.4	keep	S6 exp1 MSL: differentiable spherical-mean + Geman-McClure km loss (w0.5 s300 T0.5)
-ee5bb06	0	31.2	crash	S6 exp2a bary: OOM at bs96 (champion peak 31.08GB + bary allocs); retry bs84
-ee5bb06	212.110	26.8	discard	S6 exp2b bary@bs84: 212.11 vs 209.49 — sparse bary labels lose tau regularization; acc25 3.8% box-best (blend idea parked)
-ee5bb06	205.458	30.4	keep	S6 exp3 staggered tessellation: 2nd fine head seed1, union readout — 209.49->205.46
-8d0c8fd	0	0	crash	S6 exp4a meta heads: my class-scope bug (module block closed class, lost predict_latlon)
-8d0c8fd	213.536	30.4	discard	S6 exp4b elev+season heads: 213.54 vs 209.49 — pure-aux heads tax gradient (country worked via readout wiring)
-8d0c8fd	209.849	30.4	discard	S6 exp5 GeoKernel: 209.85 vs 209.49 — neutral at 8min; value is retrieval-enabling, pair with exemplar memory later
-8d0c8fd	0	0	crash	S6 exp6a vMF: same class-scope bug as exp4a (fixed + AST audit of remaining variants)
-8d0c8fd	207.693	30.4	keep	S6 exp6b vMF-aux (16 comp, w0.25): 207.69 vs 209.49 base — keep; goes to integration stack
-8d0c8fd	216.513	30.4	discard	S6 exp7 confusion-forge: 216.51 vs 209.49 — sampler skew kills diversity (3rd confirmation), country_acc flat
-8d0c8fd	0	31.2	crash	S6 exp8a pano: OOM bs96 (KL tensors over 31.08GB peak); retry bs84
-8d0c8fd	234.077	27.0	discard	S6 exp8b PanoDistill@84: 234.08 — grouped sampler = 21 locs/batch, diversity kill (InfoNCE repeat); park for full runs
-8d0c8fd	211.894	30.4	discard	S6 exp9 integration MSL+stagger+vMF: 211.89 vs 205.46 — keeps do NOT stack (aux crowding); champion stays MSL+stagger
+a526ea9	215.654	30.4	keep	S6 baseline (Italy box anchor): champion @ a526ea9
+a526ea9	209.489	30.4	keep	S6 exp1 MSL: differentiable spherical-mean + Geman-McClure km loss (w0.5 s300 T0.5)
+6d64b63	0	31.2	crash	S6 exp2a bary: OOM at bs96 (champion peak 31.08GB + bary allocs); retry bs84
+6d64b63	212.110	26.8	discard	S6 exp2b bary@bs84: 212.11 vs 209.49 — sparse bary labels lose tau regularization; acc25 3.8% box-best (blend idea parked)
+6d64b63	205.458	30.4	keep	S6 exp3 staggered tessellation: 2nd fine head seed1, union readout — 209.49->205.46
+0c3348a	0	0	crash	S6 exp4a meta heads: my class-scope bug (module block closed class, lost predict_latlon)
+0c3348a	213.536	30.4	discard	S6 exp4b elev+season heads: 213.54 vs 209.49 — pure-aux heads tax gradient (country worked via readout wiring)
+0c3348a	209.849	30.4	discard	S6 exp5 GeoKernel: 209.85 vs 209.49 — neutral at 8min; value is retrieval-enabling, pair with exemplar memory later
+0c3348a	0	0	crash	S6 exp6a vMF: same class-scope bug as exp4a (fixed + AST audit of remaining variants)
+0c3348a	207.693	30.4	keep	S6 exp6b vMF-aux (16 comp, w0.25): 207.69 vs 209.49 base — keep; goes to integration stack
+0c3348a	216.513	30.4	discard	S6 exp7 confusion-forge: 216.51 vs 209.49 — sampler skew kills diversity (3rd confirmation), country_acc flat
+0c3348a	0	31.2	crash	S6 exp8a pano: OOM bs96 (KL tensors over 31.08GB peak); retry bs84
+0c3348a	234.077	27.0	discard	S6 exp8b PanoDistill@84: 234.08 — grouped sampler = 21 locs/batch, diversity kill (InfoNCE repeat); park for full runs
+0c3348a	211.894	30.4	discard	S6 exp9 integration MSL+stagger+vMF: 211.89 vs 205.46 — keeps do NOT stack (aux crowding); champion stays MSL+stagger

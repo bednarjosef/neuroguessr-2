@@ -43,14 +43,14 @@ Objective: **`median_km`** (median great-circle error on the val split), **lower
   is slightly better than full-run2's (103.19/432/cell_top1 27.12 vs 104.47/471/26.35 —
   the joint CE anchor works). E7 replays on any bed for cents (scripts in session scratchpad;
   episode caches episodes_c4.npz). Next encoder: docs/C5_PLAN.md.
-- **train.py commit:** see autoresearch/2026-07-22-ideas branch (S6 keeps committed there;
+- **train.py commit:** see tag `s6-ratchet-champion` (S6 keeps committed there;
   master carries the same file)
 - **one-line:** session-4 stack + **country-level hierarchy** (w=0.5, majority-vote parents)
   + **tau-smoothed country targets** (300km) + **PATCH_KEEP 0.6** (post-saturation: richer
   tokens beat extra steps; VRAM 31.0GB peak on 5090 — NO headroom, use 0.5 on smaller GPUs).
 - **Process rules now standing (Josef): NO confirm re-runs; KEEP at ≥1 km; report every run
   in chat immediately; ViT-L locked (mobile-app target); EVAL_EVERY 250 fixed.**
-- prior: 221.5 @ ae5c260 = no-grad-ckpt + bs48×1 (32w) + 2048 geocells/topk16 + mode-seeking
+- prior: 221.5 @ ec1b843 = no-grad-ckpt + bs48×1 (32w) + 2048 geocells/topk16 + mode-seeking
   prediction (T=0.5, 1000km locality) + hier heads 64/512/2048 (log-space, w 0.25/0.5/1.0)
   + IMG 384 + EVAL_EVERY 250 + torch.compile(dynamic=True) with pre-clock warmup
 - **full metric panel:** mean_km ~1094–1124 · acc@200km 46.7% · acc@2500km ~91% · geoguessr
@@ -195,7 +195,7 @@ _(each entry: what was tried, what happened, and the takeaway so it isn't retrie
 
 - ~~bs48×1 @384~~ **GRADUATED in session 3** (banked win above) — compile fixed its throughput.
 - **Geo-safe augmentation** (exp 15): neutral at 0.5 epochs; will matter once long runs do
-  multiple epochs. Code is in git history (exp 15, commit range around a2f907c).
+  multiple epochs. Code is in git history (exp 15, commit range around af16813).
 - **IMG_SIZE 448** may re-win at long budgets where steps aren't the binding constraint.
 - **ViT-H+ backbone (0.84B)**: untried; ~2.5x FLOPs of ViT-L → wrong trade at 8 min, right
   candidate for long runs (fits 32GB with LoRA+bf16 at 384px, moderate batch).
@@ -368,13 +368,13 @@ _(anything about the box, dataset, VRAM ceilings, throughput, DINOv3 quirks, etc
   209.146.116.50 also drops idle SSH.
 - **Run long remote jobs under `nohup` on the box** — plain `ssh cmd` dies with the connection
   and kills the child. `vast.py exp` streams output constantly so it survives.
-- **Parallel data pull** (banked in prepare.py 8a28c43): 16 sharded streams; the dataset's
+- **Parallel data pull** (banked in prepare.py fcd2421): 16 sharded streams; the dataset's
   parquet row groups are ~1000 rows (~390 MB), so each stream is silent for minutes before its
   first image — not a hang. Full 60k pull ≈ 20 min at 33 MB/s.
 - **Cache tar DONE (session 2):** `josefbednar/streetview-acw-ar-cache/cache_n60000_v3000_s1337.tar`
-  (4.65 GB, private) uploaded; prepare.py pulls it automatically (66c390d) before falling back to
-  streaming. Setup is now a one-tar download. Also: per-worker part-parquets (8bdf4bc) make
-  streaming reruns resume instead of restart, and workers have socket timeouts + retries (f027237).
+  (4.65 GB, private) uploaded; prepare.py pulls it automatically (0167832) before falling back to
+  streaming. Setup is now a one-tar download. Also: per-worker part-parquets (cbbf7d6) make
+  streaming reruns resume instead of restart, and workers have socket timeouts + retries (04b1ee8).
 - **HF streaming stalls root-caused (probably):** unauthenticated/parallel hammering triggers silent
   rate-limit backoff; one worker (w08) hung twice with zero traffic on live sockets. If a worker
   stalls: kill + rerun prepare (parts resume). ALWAYS pass HF_TOKEN to remote nohup commands —
@@ -748,7 +748,7 @@ _(one dated block per session: dates, champion at start → end, headline result
 
 ### 2026-07-22 (session 5 part 2, after credit top-up — Korea box 45534538, $0.40/hr)
 - Anchor on this box: 214.2 (same stack Estonia read at ~209.9 — boxes differ ~4km; ALWAYS
-  re-anchor after a box change). End: **213.0** (1dfceb0) = est. ~208.8 Estonia-scale.
+  re-anchor after a box change). End: **213.0** (3f2c4ce) = est. ~208.8 Estonia-scale.
 - 8 scored runs + 2 OOMs: PATCH_KEEP 0.6 KEEP (−1.1); ViT-H+ 211.2 dropped by Josef (size);
   semantic cells, H3-as-fine, H3-as-level, offset head, LoRA r32 discards; GeM missed by 0.11.
 - New val metric: country_acc (predicted cell's country vs true) — ViT-L ~44-46%, H3-fine
@@ -766,7 +766,7 @@ _(one dated block per session: dates, champion at start → end, headline result
 
 ### 2026-07-22 (session 5 part 1 — mandate: aux heads + geographic hierarchy, then
 ### structural swings toward ≤100km; PAUSED: Vast credit ran out)
-- Champion at start: 210.1 (box baseline 212.2) → at end: **~209.9** (07bd934); wins were
+- Champion at start: 210.1 (box baseline 212.2) → at end: **~209.9** (77b4082); wins were
   tail-fixers: country-hier + tau-smoothed country targets (mean 1079→~1000 best ever).
 - Experiments: 11 runs (baseline, 2 keeps ×2 confirms each, subdivision discard, 448
   OOM+discard, retrieval-v1 discard, semantic-geocells NEVER RAN — box died first).
@@ -786,7 +786,7 @@ _(one dated block per session: dates, champion at start → end, headline result
   changes (data/panoramas/budget) — raise with Josef at session start.
 
 ### 2026-07-22 (session 4, night — mandate: big swings)
-- Champion at start: 221.5 (baseline re-run 221.50 exactly) → at end: **210.1** (63e090c),
+- Champion at start: 221.5 (baseline re-run 221.50 exactly) → at end: **210.1** (6d8ca60),
   −5.1% this session, −60.8% cumulative from 535.4
 - Experiments run: 9 (baseline + 6 ideas + 2 confirms; 2 KEEP confirmed, 4 discard, 1 3-min crash)
 - Headline: **PatchDropout 0.5** (−6.1: drop half the patch tokens in train forwards,
@@ -807,7 +807,7 @@ _(one dated block per session: dates, champion at start → end, headline result
   IMG 448, ViT-H+, finer cells, rerank family).
 
 ### 2026-07-22 (session 3)
-- Champion at start: 229.9 (box baseline 232.4) → at end: **221.5** (ae5c260), −4.7% this session
+- Champion at start: 229.9 (box baseline 232.4) → at end: **221.5** (ec1b843), −4.7% this session
 - Experiments run: 10 (baseline + 7 ideas + 2 confirms; 2 KEEP confirmed, 5 discard)
 - Headline: **torch.compile + pre-clock warmup** (−7.6, +14% steps) then **bs48×1 graduates
   from the parked list** (−3.3 confirmed twice) — both wins are throughput/optimization-scale;
@@ -820,7 +820,7 @@ _(one dated block per session: dates, champion at start → end, headline result
   untried (but see aux-head pattern above), deeper-hierarchy follow-up still unused.
 
 ### 2026-07-21 (session 2, evening)
-- Champion at start: 283.4 (baseline re-run 282.8) → at end: **229.9** (32075c7), −19% this session
+- Champion at start: 283.4 (baseline re-run 282.8) → at end: **229.9** (c7202d3), −19% this session
 - Experiments run: 9 (baseline + 8; 3 KEEP incl. confirm, 5 discard, 1 parser-CRASH that was
   really a finish — score recovered from run.log)
 - Headline: hier heads 64/512/2048 (−18.9), IMG 384 (−25.9), EVAL_EVERY 250 (−8, confirmed).
@@ -833,7 +833,7 @@ _(one dated block per session: dates, champion at start → end, headline result
   ideas #8); Josef's geo-contrastive hard negatives is #1.
 
 ### 2026-07-21 (session 1)
-- Champion at start: none → at end: **283.4 km** (ae5e29f)
+- Champion at start: none → at end: **283.4 km** (359b895)
 - Experiments run: 9 (1 baseline, 3 KEEP, 4 discard, 1 OOM crash)
 - Headline: 535.4 → 283.4 (−47%) via throughput unbrake (−19%), 2048 geocells (−8%),
   mode-seeking prediction rule (−29%). Big lesson: median_km rewards mode-seeking inference;

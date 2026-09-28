@@ -74,7 +74,7 @@ def rank0_first():
         dist.barrier()
 
 # ---------------------------------------------------------------------------
-# Hyperparameters — champion stack (train.py @ 1dfceb0) + full-run knobs
+# Hyperparameters — champion stack (train.py @ 3f2c4ce) + full-run knobs
 # ---------------------------------------------------------------------------
 
 MODEL_NAME = "facebook/dinov3-vitl16-pretrain-lvd1689m"
