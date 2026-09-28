@@ -1,138 +1,115 @@
-# autoresearch
+# NeuroGuessr 2
 
-An autonomous research agent you drive from a laptop with **no local GPU**. You tell it what to
-optimize; it rents a GPU box on [Vast.ai](https://vast.ai), then runs a simple **keep/reset
-ratchet** — mutate one **experiment** file, run it once, keep the change if it beat the champion,
-otherwise throw it away — improving a measured result over a session. It's a single agent running
-one experiment at a time, in the spirit of
-[karpathy/autoresearch](https://github.com/karpathy/autoresearch), with Vast wired in so the
-experiments run on a rented GPU when you don't have one locally. (That one experiment can shard
-across **multiple GPUs** via `torch.distributed` when a model needs them — `--gpus N` — it's
-just never *several* experiments in parallel.) Ideas are grounded in the literature via the
-`research` skill, progress is visible in a live dashboard, and the box tears itself down at a
-hard deadline so you can leave it running overnight.
+**Where on Earth was this photo taken?** One street-level photo goes in and one latitude/longitude
+comes out. There is no panorama, compass heading or metadata. The model's median error is
+**34.1 km** on a held-out set of 2,998 images from 123 countries, and the whole pipeline runs
+offline on an Android phone.
 
-**It can research almost anything.** The repo ships configured for **LLM pretraining** (the
-*experiment* is `train.py`, the *harness* is `prepare.py`, the *objective* is `val_bpb`) — but
-on a fresh clone the agent **onboards you and reshapes it to your goal**: any task where one
-artifact can be mutated and scored by a frozen evaluator (an algorithm, a kernel, a solver, a
-prompt, a strategy…). Set the objective + direction with `vast.py start --metric NAME --goal
-min|max`; the loop is the same regardless of domain.
+[**Paper (PDF)**](paper/neuroguessr.pdf) · [**Android app**](https://github.com/bednarjosef/neuroguessr-app) ·
+[Checkpoints & cached vectors](https://huggingface.co/josefbednar/neuroguessr-fullrun2-ckpt) ·
+[Dataset](https://huggingface.co/datasets/josefbednar/streetview-acw-300k) ·
+[v1 (194 km)](https://github.com/bednarjosef/neuroguessr)
 
-The default training core is a single-file GPT (Muon + AdamW), forked from
-[nanochat](https://github.com/karpathy/nanochat) / [autoresearch](https://github.com/karpathy/nanochat).
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/progression-dark.png">
+  <img alt="Median error by pipeline stage: 104.7 km for the classifier alone, down to 34.1 km for the full pipeline" src="docs/progression-light.png">
+</picture>
 
----
+## Results
+
+All rows are on the same frozen 2,998-image validation split. No validation location appears in training.
+
+| | median | within 1 km | within 25 km | GeoGuessr / round |
+|---|---:|---:|---:|---:|
+| NeuroGuessr v1 (CLIP ViT-L, full fine-tune, same data) | 194 km | – | – | 4140 |
+| Geocell classifier only | 104.7 km | 0.0 % | 7.6 % | – |
+| **Full pipeline** | **34.1 km** | 10.1 % | **46.3 %** | **4470** |
+| On device, int8 index, 4 views per location (6.2 GB) | 33.9 km | – | 46.4 % | – |
+| On device, int8 index, 1 view per location (1.6 GB) | 44.4 km | – | 43.0 % | – |
+
+For orientation only (different test set): PIGEON reports 131 km from a single image and
+44.4 km from a four-image panorama.
 
 ## How it works
 
-- **You** pick the goal (lowest `val_bpb`, a better optimizer, a loss that generalizes, …), the
-  per-experiment training budget, and how long the session runs.
-- **The agent** rents a Vast box (one GPU by default; `--gpus N` for one experiment sharded
-  across N via `torch.distributed`) and runs the ratchet loop. Each iteration it:
-  1. picks **one** idea (from the search directions in `program.md` + its own reasoning and the
-     literature),
-  2. edits `train.py`,
-  3. runs it once — `vast.py exp` trains for a fixed budget on the rented GPU and reports the
-     score (**`val_bpb`**: held-out bits-per-byte, lower = better, vocab-independent so changes
-     compare fairly),
-  4. **keeps** the change (commits it as the new champion) if it beat the previous best, else
-     **resets** `train.py` and tries something else.
-- **The champion only ratchets forward.** Every kept win becomes the base the next idea builds on,
-  so the score improves monotonically across the whole session.
+A classifier narrows down where to look, and retrieval picks the exact photo.
 
-The metric (`evaluate_bpb`) and the data regime (`prepare.py`) are **frozen during research** so
-the score can't be gamed — gains must come from `train.py` alone.
+1. **Encode.** A DINOv3 ViT-L/16 backbone with rank-16 LoRA adapters turns the photo into a single
+   1024-d descriptor. The 300 M backbone weights stay frozen; about 28 M parameters are trained in total.
+2. **Classify.** Heads on that descriptor produce a posterior over 5,000 learned geocells, with
+   coarse and country-level heads folded in to cut wrong-continent errors.
+3. **Gate.** The gate keeps the smallest set of cells that holds 95 % of the posterior, typically
+   about 40 cells and about 20 k candidate images.
+4. **Retrieve.** Candidates come from an index of all **1,198,072** training images. They are
+   scored with a blend of contrastive "band" heads trained at 5/10/25/50 km, a PCA-whitened raw
+   descriptor and CSLS hubness correction.
+5. **Rerank and snap.** A 16-feature logistic reranker (17 parameters) reorders the top 100.
+   The answer is the winning training photo's **real coordinates**, not a cell centre.
 
-## The files
+<details>
+<summary>Architecture diagram (a snapshot from the 43.8 km stage)</summary>
 
-| File | Role |
-|------|------|
-| **`CLAUDE.md`** | Session-start router. On a fresh clone it **onboards you** (asks what to research) and tailors `program.md`. |
-| **`program.md`** | The **mission & config** you edit: what to optimize, the metric, the knobs, the search directions. |
-| **`ENGINE.md`** | The **fixed engine**: how the agent runs the ratchet loop. Not edited. |
-| **`train.py`** | The research target — the only file edited *during* research. |
-| **`prepare.py`** | Data, tokenizer, regime, and the `evaluate_bpb` metric. Frozen during research. |
-| **`vast.py`** | The control plane (rent / setup / run one experiment / dashboard / teardown). |
+![architecture](docs/architecture.png)
+</details>
 
-## Quick start
+## What I found
 
-```bash
-# 1. One-time: authenticate Vast (an ssh key is auto-created/registered).
-vastai set api-key <YOUR_KEY>
+- **Geocell classifiers hit a quantization floor.** With 5,000 cells and an argmax readout, the
+  median cannot go below about 34 km. Retrieval removes that floor because it returns a real
+  coordinate. The single biggest gain (104.7 → 78.5 km) came from reusing features that were
+  already computed as a retrieval index, with **no training at all**.
+- **What remains is almost entirely a matching problem.** For 100 % of queries, a training
+  image exists within 25 km. For 92–98 % of queries, such an image makes it through the gate.
+  The matcher picks one only 46 % of the time.
+- **Cheap work on cached vectors beat every encoder fine-tune.** Hubness correction, whitening,
+  offline band heads and a 17-parameter reranker were together worth more than any backbone
+  retraining, at roughly a thousandth of the cost. The whole retrieval stage cost about $6 of GPU time.
+- **DINOv3 cannot use int8 on the phone.** A massive-activation channel (peak about 157 k) drops
+  descriptor cosine similarity from 0.99 to 0.60 under int8 and overflows fp16. What ships
+  instead is fp16 linear layers with fp32 norms and residual path. The *index*, by contrast,
+  quantizes to int8 with no measurable loss.
 
-# 2. Open Claude Code in this repo (grant permissions for autonomy).
-#    A fresh clone auto-onboards: it asks what you want to research, the per-experiment
-#    minutes, the session hours, and the hardware — then tailors program.md to your goal.
+The paper covers all of this in detail, including 35 rejected ideas.
 
-# 3. Say "kick off a session". The agent brings a box up in one command:
-python vast.py start --hours 3 --minutes 5 --max-price 0.60
-#    start = rent cheapest qualifying box → background watchdog → setup.
-#    Need multiple GPUs for one big model? add --gpus 4 (one experiment, sharded via torchrun).
-```
+## Limitations
 
-Then the agent runs the loop on its own until the deadline (or you stop it). Two independent time
-knobs: **`--minutes`** = how long *one* experiment trains; **`--hours`** = how long the *whole*
-session runs before the box auto-destroys (typically 2–3 h).
+- The model is trained and evaluated on **Street View** imagery. On consumer photos (IM2GPS3k)
+  it reaches only 9.6 % within 25 km, against 34–37 % for systems trained on Flickr. The cause
+  is domain shift in the descriptor, not index coverage (see [`benchmarks/`](benchmarks/)).
+- The mean error is 328 km, because the model sometimes fails confidently on the wrong continent.
+- Geolocating a single photo can be misused. About one photo in ten resolves to within 1 km.
+  The paper's privacy section discusses this.
 
-> Already have a GPU and just want to smoke-test the trainer locally?
-> `uv sync && uv run prepare.py && uv run train.py`.
+## Repository
 
-## Research-driven ideas — the `research` skill
+| | |
+|---|---|
+| [`prepare.py`](prepare.py) | Frozen evaluation harness: data subset, splits, haversine, metric panel |
+| [`train.py`](train.py), [`train_full.py`](train_full.py), [`train_c5.py`](train_c5.py) | Classifier training: 60 k-image search phase, full 1.2 M-image run, joint classifier + episode run |
+| [`retrieval/`](retrieval/) | Index building, place and band heads, contrastive encoder fine-tunes (C3/C4), lever sweeps, reranker. [`local_evals/bench_eval.py`](retrieval/local_evals/bench_eval.py) is the end-to-end champion scorer |
+| [`benchmarks/`](benchmarks/) | IM2GPS / IM2GPS3k manifests, provenance and results |
+| [`paper/`](paper/) | LaTeX source and PDF |
+| [`research/`](research/) | The full research record: log, experiment ledger, plans and run logs |
+| [`vast.py`](vast.py) | Control plane for renting, running on and tearing down Vast.ai GPU boxes |
+| [`webapp/`](webapp/) | Minimal local demo server (classifier readout) |
 
-The agent doesn't only brainstorm from memory. It uses the
-[**`research` skill**](https://github.com/bednarjosef/claude-research-skill) — which searches
-[OpenAlex](https://openalex.org), fetches open-access PDFs, and converts them to Markdown so the
-agent *reads* papers (line-numbered) instead of just citing them. **Install it once** (keyless —
-no API key):
+**Running it.** Run `uv sync` first. The DINOv3 backbone is gated on Hugging Face, so set `HF_TOKEN`.
+Trained checkpoints, band heads and cached descriptor arrays are on
+[Hugging Face](https://huggingface.co/josefbednar/neuroguessr-fullrun2-ckpt), with one folder per phase.
+With those, every retrieval experiment runs on cached vectors without re-encoding a single image.
+Training runs on rented GPUs. [`research/FULLRUN.md`](research/FULLRUN.md) is the runbook for the
+full-corpus classifier run (about 2 h on 4× RTX 5090).
 
-```bash
-git clone https://github.com/bednarjosef/claude-research-skill
-cd claude-research-skill && ./install.sh   # symlinks into ~/.claude/skills/research/
-```
+## How it was built
 
-Between experiments the agent leans on it to:
+The experiments were proposed and run by an autonomous agent, under my supervision, on a keep-or-reset loop
+forked from [karpathy/autoresearch](https://github.com/karpathy/autoresearch). The agent changes one
+experiment file, runs it once against the frozen evaluator, and keeps the change only if the
+median improves. Enforcement is structural: only the experiment file is ever uploaded to the GPU
+box, so the evaluator cannot drift. [`research/`](research/) contains the whole record: all 74
+logged runs with the rejections and crashes, the cross-session research log, and the plans.
 
-- surface **novel ideas** and **current SOTA** for whatever is being optimized,
-- check whether an idea is already known to work (or to fail), before spending a run on it,
-- ground each next experiment in the literature rather than guesswork.
+## License
 
-It scans **abstracts first** (cheap) and only fetches full text for the most promising leads.
-`ENGINE.md` directs the agent to use the skill for ideation, SOTA-hunting, and verification — not
-to rely on what it already knows. (Because a single `exp` run blocks for the whole training
-budget, the agent may optionally spin up a research-scout subagent during that window to mine the
-literature — but the loop is single-agent by default.)
-
-## Control plane (`vast.py`)
-
-`python vast.py --help` for everything. The ones you'll see most:
-
-| Command | What it does |
-|---------|--------------|
-| `start` | One-shot bring-up: rent → watchdog → setup (`--gpus N` for a multi-GPU box). |
-| `exp --train F` | Run one experiment (`train.py`); print `val_bpb`/vram (foreground/blocking). Sharded across all GPUs via `torchrun` on a multi-GPU box. |
-| `dashboard` | Live browser view (chart, leaderboard, cost, deadline). |
-| `log` | Append one row to the results ledger. |
-| `reap` | Kill a stray/ghost run; show what's on the GPU. |
-| `status` / `ps` | Tracked-box status / all account instances. |
-| `down` / `nuke` | Destroy the box / destroy all boxes. |
-
-## Watch it live
-
-`python vast.py dashboard` starts a tiny local web server (stdlib only, no deps) and opens a page
-that auto-refreshes every 5s: a **`val_bpb` chart** with a best-so-far line, a leaderboard, recent
-runs, and a live box panel (GPU, $/hr, uptime, **spend so far**, **deadline countdown**). It reads
-the local `results.tsv` + `.vast_state.json`, so it updates as the agent logs results — leave it
-open overnight.
-
-## Safety & cost
-
-- **One tracked box at a time** with a **hard auto-destroy deadline** and a background `watchdog`;
-  `ps`/`nuke` catch orphans, `reap` clears a stray run.
-- At ~$0.34/hr for an RTX 4090, a 3-hour single-GPU session is roughly **$1** (`--max-price` is
-  per-GPU/hr, so an N-GPU box costs ~N×).
-
-## Credits & license
-
-Forked from Andrej Karpathy's autoresearch; training core adapted from
-[nanochat](https://github.com/karpathy/nanochat). MIT.
+MIT, see [LICENSE](LICENSE). The keep-or-reset loop is adapted from
+[karpathy/autoresearch](https://github.com/karpathy/autoresearch) (MIT).

@@ -16,7 +16,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-REPO = "/home/josef/everything/coding/neuroguessr-2-research"
+REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 IX = os.path.join(REPO, "run_c5_index")
 sys.path.insert(0, REPO)
 from retrieval.train_place_head import PlaceHead  # noqa: E402

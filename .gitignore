@@ -16,7 +16,7 @@ AGENTS.md
 # Experimental code/artifacts
 dev/
 
-# NOTE: results.tsv and findings.md ARE tracked here (deliberate override of ENGINE.md's
+# NOTE: research/results.tsv and research/findings.md ARE tracked here (deliberate override of ENGINE.md's
 # untracked default) so the full run ledger + notebook are pushed for cross-session memory.
 
 # Vast session state (per-session; never commit)

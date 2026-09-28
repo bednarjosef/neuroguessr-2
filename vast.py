@@ -65,7 +65,7 @@ from string import Template
 REPO = Path(__file__).resolve().parent
 STATE = REPO / ".vast_state.json"
 REMOTE_DIR = "/root/auto"
-RESULTS = REPO / "results.tsv"
+RESULTS = REPO / "research" / "results.tsv"
 
 # Use the proven "PyTorch (Vast)" template: it ships a cached image with CUDA + python
 # + a working sshd AND torch preinstalled at /venv/main. We RUN that torch directly
@@ -288,7 +288,7 @@ def cmd_start(a) -> None:
     cmd_setup(a)         # template torch + light deps + data + detect GPU
     print("\n=== READY ===")
     print("box up + prepared. Next (agent): run the baseline once with "
-          "`python vast.py exp --train train.py`, then start the ratchet loop. See ENGINE.md.")
+          "`python vast.py exp --train train.py`, then start the ratchet loop. See research/ENGINE.md.")
 
 
 def _wait_running() -> None:
@@ -344,8 +344,8 @@ def cmd_sync(a) -> None:
         sys.exit("ssh never came up; check `vast.py status` / the Vast UI")
     print(f"uploading repo -> {REMOTE_DIR} (tar over ssh)…")
     excludes = " ".join(f"--exclude=./{x}" for x in
-                        (".venv", ".git", ".vast_state.json", "results.tsv",
-                         "__pycache__", "findings.md", "dev", ".env",
+                        (".venv", ".git", ".vast_state.json", "research",
+                         "__pycache__", "dev", ".env",
                          # local run dirs hold multi-GB checkpoints/indices — never upload
                          # them (fetch checkpoints from HF on the box instead)
                          "run_full", "run_full2", "run_smoke", "run_c3", "run_c4", ".inductor"))
@@ -742,7 +742,7 @@ def _render_page() -> str:
     keeps = sorted(valid_keeps, key=lambda r: _fval(r["score"]), reverse=(goal == "max"))
     cols = [(metric, "score"), ("mem", "memory_gb"), ("commit", "commit"),
             ("description", "description")]
-    findings = (REPO / "findings.md").read_text()[-4000:] if (REPO / "findings.md").exists() else "(no findings.md yet)"
+    findings = (REPO / "research" / "findings.md").read_text()[-4000:] if (REPO / "research" / "findings.md").exists() else "(no findings.md yet)"
     return PAGE.safe_substitute(
         box=_box_panel(load_state()),
         stats=f'<div class=card>{_stats_panel(rows, metric, goal)}</div>',

@@ -1,9 +1,9 @@
 #!/bin/bash
 # Unattended C4 EVAL driver: rent -> SCREEN GPUS -> setup -> run_c4_eval.sh -> pull -> down.
 # Never leaves a box billing; mirrors before any teardown.
-REPO=/home/josef/everything/coding/neuroguessr-2-research
+REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 SP=/tmp/claude-1000/-home-josef-everything-coding-neuroguessr-2-research/cbfdf82d-e4aa-4b9a-859a-2381fe68b5f8/scratchpad
-PY=/home/josef/.local/bin/python
+PY="${PY:-python}"
 cd "$REPO" || exit 1
 set -a; . "$REPO/.env"; set +a
 
@@ -89,7 +89,7 @@ echo "[driver] pipeline status: $STATUS"
 timeout 300 $PY vast.py run "cd /root/auto && tail -n 600 c4eval.log" > "$SP/c4eval_full.log" 2>&1
 for f in combo_c4.log grid_gate_c4.log levers_c4.log head_c4_5.log head_c4_10.log head_c4_25.log head_c4_50.log; do
   timeout 200 $PY vast.py run "cd /root/auto && cat $f 2>/dev/null | grep -v 'img/s, ETA'" \
-      > "$REPO/run_c2/c4eval_$f" 2>&1
+      > "$REPO/research/logs/run_c2/c4eval_$f" 2>&1
 done
 
 # --- 6. emergency mirror if the pipeline didn't finish its own ----------------------

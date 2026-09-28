@@ -1,7 +1,7 @@
 [project]
-name = "autoresearch"
+name = "neuroguessr-2"
 version = "0.1.0"
-description = "Autonomous image-geolocalization research agent"
+description = "Single-image geolocalization: geocell classifier + gated retrieval over 1.2M Street View images"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [

@@ -1,9 +1,9 @@
 #!/bin/bash
 # C5 driver PHASE 2 (recovery): poll -> pull -> mirror-if-needed -> down. Box already
 # running run_c5_cont.sh (main train started 17:32 box time).
-REPO=/home/josef/everything/coding/neuroguessr-2-research
+REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 SP=/tmp/claude-1000/-home-josef-everything-coding-neuroguessr-2-research/cbfdf82d-e4aa-4b9a-859a-2381fe68b5f8/scratchpad
-PY=/home/josef/.local/bin/python
+PY="${PY:-python}"
 V=$(command -v vastai || echo "$HOME/.local/bin/vastai")
 cd "$REPO" || exit 1
 set -a; . "$REPO/.env"; set +a
@@ -23,10 +23,10 @@ done
 echo "[driver] pipeline status: $STATUS"
 
 # --- 5. pull results BEFORE teardown --------------------------------------------------
-mkdir -p "$REPO/run_c5_logs"
-timeout 300 $PY vast.py run "cd /root/auto && tail -n 800 c5.log" > "$REPO/run_c5_logs/c5_full.log" 2>&1
+mkdir -p "$REPO/research/logs/run_c5"
+timeout 300 $PY vast.py run "cd /root/auto && tail -n 800 c5.log" > "$REPO/research/logs/run_c5/c5_full.log" 2>&1
 for f in train_c5.log smoke_c5.log pilot0.log pilot1.log pilot2.log head_c5_5.log head_c5_10.log head_c5_25.log; do
-  timeout 200 $PY vast.py run "cd /root/auto && tail -n 150 $f 2>/dev/null | grep -v 'img/s, ETA'" > "$REPO/run_c5_logs/$f" 2>&1
+  timeout 200 $PY vast.py run "cd /root/auto && tail -n 150 $f 2>/dev/null | grep -v 'img/s, ETA'" > "$REPO/research/logs/run_c5/$f" 2>&1
 done
 
 # --- 6. emergency mirror if the pipeline didn't finish its own ------------------------

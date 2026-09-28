@@ -16,7 +16,7 @@ import time
 
 import numpy as np
 
-REPO = "/home/josef/everything/coding/neuroguessr-2-research"
+REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 IX = os.path.join(REPO, "run_full2", "retrieval_index")
 SP = os.path.dirname(os.path.abspath(__file__))
 EP = os.path.join(SP, "episodes_s384.npz")

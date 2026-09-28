@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """Generate train_c5.py from train_full.py via anchored surgical patches.
 
-C5 additions (docs/C5_PLAN.md): MLP LoRA, attribute heads (free labels), graded listwise
+C5 additions (research/plans/C5_PLAN.md): MLP LoRA, attribute heads (free labels), graded listwise
 episode loss on geography-mined pools with climate-matched cross-continent negatives,
 resolution-verified retrieval probe, per-component W&B logging. Interleaved CE/episode
 batches; AR_EPOCHS=1 => one full CE pass + equal episode views (~2.4M views total).
 """
+import os
 import re
 
-SRC = "/home/josef/everything/coding/neuroguessr-2-research/train_full.py"
-DST = "/home/josef/everything/coding/neuroguessr-2-research/train_c5.py"
+SRC = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "train_full.py")
+DST = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "train_c5.py")
 s = open(SRC).read()
 n0 = len(s)
 

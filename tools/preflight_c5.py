@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""C5 launch gate: validate everything locally BEFORE renting (docs/C5_PLAN.md).
+"""C5 launch gate: validate everything locally BEFORE renting (research/plans/C5_PLAN.md).
 The check that would have caught the C4-eval centroids.npz crash in 5 seconds."""
 import os
 import py_compile

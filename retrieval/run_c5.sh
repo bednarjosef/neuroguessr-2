@@ -1,5 +1,5 @@
 #!/bin/bash
-# C5 bed run, unattended (docs/C5_PLAN.md). NO `|| true`: a failed stage fails loudly and the
+# C5 bed run, unattended (research/plans/C5_PLAN.md). NO `|| true`: a failed stage fails loudly and the
 # driver mirrors whatever exists. Mirror after every artifact-producing stage.
 set -e
 cd /root/auto

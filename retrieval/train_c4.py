@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """C4: joint classifier + retrieval fine-tune with a GRADED-distance contrastive loss.
 
-Fixes everything C1-C3 measured (see docs/C4_PLAN.md):
+Fixes everything C1-C3 measured (see research/plans/C4_PLAN.md):
 
   * GRADED targets instead of binary positives/negatives. C3 masked 10-50 km and pushed
     50-500 km apart at full strength, which — with region-restricted batches — was nearly the

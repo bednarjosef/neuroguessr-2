@@ -16,7 +16,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
 
-REPO = os.environ.get("NG_REPO", "/home/josef/everything/coding/neuroguessr-2-research")
+REPO = os.environ.get("NG_REPO", os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, REPO)
 from retrieval.embed_full import GeoModelEval, IMAGENET_MEAN, IMAGENET_STD  # noqa: E402
 
